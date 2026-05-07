@@ -17,6 +17,14 @@ export type Scenario = {
 
 export const DEFAULT_SCENARIO_ID = 'pochaho_classic'
 
+function scenarioCardsByTag(tag: string): Card[] {
+  const fallback = CARD_LIST.filter((c) => c.tags?.includes('fallback'))
+  const themed = CARD_LIST.filter((c) => c.tags?.includes(tag))
+  const merged = [...themed, ...fallback]
+  // Если тема пустая (опечатка/нет карточек), хотя бы оставим fallback.
+  return merged.length > 0 ? merged : fallback
+}
+
 export const SCENARIOS: Scenario[] = [
   {
     id: 'pochaho_classic',
@@ -31,6 +39,14 @@ export const SCENARIOS: Scenario[] = [
     label: 'Поздний запуск (1988)',
     startYear: 1988,
     cards: CARD_LIST,
+    characters: CHARACTERS,
+    dossierCopy: DEFAULT_DOSSIER_COPY,
+  },
+  {
+    id: 'pochaho_rosnano_2011',
+    label: 'Роснано (2011–2013)',
+    startYear: 2011,
+    cards: scenarioCardsByTag('rosnano_2011_2013'),
     characters: CHARACTERS,
     dossierCopy: DEFAULT_DOSSIER_COPY,
   },
