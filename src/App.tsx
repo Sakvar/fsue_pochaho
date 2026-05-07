@@ -7,6 +7,7 @@ import { buildDossierView } from '@/game/dossierCopy'
 import { getScenario, SCENARIOS } from '@/game/scenarios'
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
+import { initTelegramMiniApp, telegramImpact } from '@/integrations/telegram'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import '@/styles/app.css'
 
@@ -67,6 +68,16 @@ export default function App() {
   )
 
   const handleClearStamp = useCallback(() => clearStamp(), [clearStamp])
+  const handleChooseLeft = useCallback(() => {
+    telegramImpact('medium')
+    choose('left')
+  }, [choose])
+  const handleChooseRight = useCallback(() => {
+    telegramImpact('medium')
+    choose('right')
+  }, [choose])
+
+  useEffect(() => initTelegramMiniApp(), [])
 
   const left = card?.left
   const right = card?.right
@@ -145,7 +156,7 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('left')}
+          onClick={handleChooseLeft}
           disabled={phase !== 'playing' || !left}
         >
           <span className="decision-btn__label">{left?.label ?? '—'}</span>
@@ -154,7 +165,7 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('right')}
+          onClick={handleChooseRight}
           disabled={phase !== 'playing' || !right}
         >
           <span className="decision-btn__label">{right?.label ?? '—'}</span>
