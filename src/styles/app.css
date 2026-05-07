@@ -266,16 +266,8 @@
     display: none;
   }
 
-  .dossier {
-    position: static;
-    inset: auto;
-    width: 100%;
-    transform: none;
-    transition: none;
-    box-shadow: none;
-    border: 2px solid var(--border);
-    background: linear-gradient(180deg, var(--folder), #2e2820);
-  }
+  /* NOTE: `.dossier` base styles are declared later in this file.
+     Mobile overrides are repeated again after the base rule so they win. */
 }
 
 @media (min-width: 900px) {
@@ -298,6 +290,24 @@
 
 .dossier--open {
   transform: translateX(0);
+}
+
+@media (max-width: 899px) {
+  .dossier {
+    position: static;
+    inset: auto;
+    width: 100%;
+    transform: none;
+    transition: none;
+    box-shadow: none;
+    z-index: auto;
+    border: 2px solid var(--border);
+    background: linear-gradient(180deg, var(--folder), #2e2820);
+  }
+
+  .dossier--open {
+    transform: none;
+  }
 }
 
 @media (min-width: 900px) {
