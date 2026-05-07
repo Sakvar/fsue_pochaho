@@ -44,7 +44,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 'pochaho_rosnano_2011',
-    label: 'Роснано (2011–2013)',
+    label: 'Почахо (2011)',
     startYear: 2011,
     cards: scenarioCardsByTag('rosnano_2011_2013'),
     characters: CHARACTERS,
