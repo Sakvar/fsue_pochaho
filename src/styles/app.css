@@ -1,8 +1,7 @@
 .app-shell {
   min-height: 100dvh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   position: relative;
   overflow-x: hidden;
 }
@@ -42,6 +41,8 @@
 }
 
 .app-shell__main {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   justify-items: center;
