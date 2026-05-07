@@ -24,6 +24,15 @@ body {
   min-height: 100%;
 }
 
+/* Telegram Mini App: content safe area from WebApp API (see src/telegram/miniApp.ts) */
+html.tg-mini-app .app-shell {
+  padding-top: var(--tg-content-safe-top, 0px);
+}
+
+html.tg-mini-app .decisions {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px) + var(--tg-content-safe-bottom, 0px));
+}
+
 button {
   font-family: var(--font-mono);
   cursor: pointer;

@@ -8,6 +8,7 @@ import { getScenario, SCENARIOS } from '@/game/scenarios'
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { telegramChoiceHaptic } from '@/telegram/miniApp'
 import '@/styles/app.css'
 
 function useMediaQuery(query: string): boolean {
@@ -145,7 +146,10 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('left')}
+          onClick={() => {
+            telegramChoiceHaptic()
+            choose('left')
+          }}
           disabled={phase !== 'playing' || !left}
         >
           <span className="decision-btn__label">{left?.label ?? '—'}</span>
@@ -154,7 +158,10 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('right')}
+          onClick={() => {
+            telegramChoiceHaptic()
+            choose('right')
+          }}
           disabled={phase !== 'playing' || !right}
         >
           <span className="decision-btn__label">{right?.label ?? '—'}</span>
