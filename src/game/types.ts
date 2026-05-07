@@ -15,7 +15,7 @@ export type ChoiceSide = 'left' | 'right'
 export type GameState = {
   resources: Resources
   flags: Record<string, boolean | number>
-  meta: { turn: number; year: number; runId: string }
+  meta: { turn: number; year: number; runId: string; scenarioId: string }
   phase: GamePhase
   endingId: string | null
   currentCardId: string

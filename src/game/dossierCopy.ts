@@ -1,7 +1,7 @@
 import { isFlagTruthy } from '@/game/cardEngine'
 import type { GameState } from '@/game/types'
 
-type RumorRule = {
+export type RumorRule = {
   id: string
   anyOf?: string[]
   allOf?: string[]
@@ -121,14 +121,29 @@ export type DossierViewModel = {
   reputation: string
 }
 
-export function buildDossierView(state: Pick<GameState, 'resources' | 'flags' | 'meta'>): DossierViewModel {
-  const rumors = RUMORS.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
-  const crises = CRISIS_RULES.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
+export type DossierCopy = {
+  rumors: RumorRule[]
+  crises: RumorRule[]
+  reputationLine: (state: Pick<GameState, 'resources'>) => string
+}
+
+export const DEFAULT_DOSSIER_COPY: DossierCopy = {
+  rumors: RUMORS,
+  crises: CRISIS_RULES,
+  reputationLine,
+}
+
+export function buildDossierView(
+  state: Pick<GameState, 'resources' | 'flags' | 'meta'>,
+  copy: DossierCopy = DEFAULT_DOSSIER_COPY,
+): DossierViewModel {
+  const rumors = copy.rumors.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
+  const crises = copy.crises.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
   return {
     year: state.meta.year,
     turn: state.meta.turn,
     rumors: rumors.slice(0, 6),
     crises: crises.slice(0, 4),
-    reputation: reputationLine(state),
+    reputation: copy.reputationLine(state),
   }
 }

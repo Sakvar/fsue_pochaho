@@ -4,6 +4,7 @@ import { FacilityDossier } from '@/components/FacilityDossier'
 import { StampFeedback } from '@/components/StampFeedback'
 import { StatusBars } from '@/components/StatusBars'
 import { buildDossierView } from '@/game/dossierCopy'
+import { getScenario, SCENARIOS } from '@/game/scenarios'
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -44,6 +45,7 @@ export default function App() {
   const flags = useGameStore((s) => s.flags)
   const meta = useGameStore((s) => s.meta)
   const currentCardId = useGameStore((s) => s.currentCardId)
+  const cardsById = useGameStore((s) => s.cardsById)
   const phase = useGameStore((s) => s.phase)
   const endingId = useGameStore((s) => s.endingId)
   const dossierOpen = useGameStore((s) => s.dossierOpen)
@@ -51,13 +53,18 @@ export default function App() {
   const stampMessage = useGameStore((s) => s.stampMessage)
   const choose = useGameStore((s) => s.choose)
   const newGame = useGameStore((s) => s.newGame)
+  const setScenario = useGameStore((s) => s.setScenario)
   const toggleDossier = useGameStore((s) => s.toggleDossier)
   const setMobileTab = useGameStore((s) => s.setMobileTab)
   const clearStamp = useGameStore((s) => s.clearStamp)
 
+  const scenario = useMemo(() => getScenario(meta.scenarioId), [meta.scenarioId])
   const meters = useMemo(() => selectMeters(resources), [resources])
-  const card = useMemo(() => selectCurrentCard(currentCardId), [currentCardId])
-  const dossierModel = useMemo(() => buildDossierView({ resources, flags, meta }), [resources, flags, meta])
+  const card = useMemo(() => selectCurrentCard(currentCardId, cardsById), [currentCardId, cardsById])
+  const dossierModel = useMemo(
+    () => buildDossierView({ resources, flags, meta }, scenario.dossierCopy),
+    [resources, flags, meta, scenario.dossierCopy],
+  )
 
   const handleClearStamp = useCallback(() => clearStamp(), [clearStamp])
 
@@ -67,7 +74,27 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <h1 className="app-title">ФГУП «ПОЧАХО» — закрытое направление</h1>
+      <header className="app-header">
+        <h1 className="app-title">ФГУП «ПОЧАХО» — закрытое направление</h1>
+        <div className="app-menu">
+          <label className="app-menu__label" htmlFor="scenario-select">
+            Тематика
+          </label>
+          <select
+            id="scenario-select"
+            className="app-menu__select"
+            value={scenario.id}
+            onChange={(e) => setScenario(e.target.value)}
+            aria-label="Выбор тематики"
+          >
+            {SCENARIOS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </header>
       <StatusBars meters={meters} />
       {isMobile ? (
         <div className="mobile-tabs" role="tablist" aria-label="Экран">

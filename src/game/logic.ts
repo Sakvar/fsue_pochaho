@@ -3,7 +3,6 @@ import {
   INITIAL_RESOURCES,
   RESOURCE_MAX,
   RESOURCE_MIN,
-  START_YEAR,
   TURNS_PER_YEAR,
 } from '@/game/constants'
 import type { GameState, Resources } from '@/game/types'
@@ -67,11 +66,11 @@ export function advanceMeta(state: GameState): GameState {
   }
 }
 
-export function createEmptyState(runId: string): GameState {
+export function createEmptyState(runId: string, scenarioId: string, startYear: number): GameState {
   return {
     resources: { ...INITIAL_RESOURCES },
     flags: {},
-    meta: { turn: 0, year: START_YEAR, runId },
+    meta: { turn: 0, year: startYear, runId, scenarioId },
     phase: 'playing',
     endingId: null,
     currentCardId: '',
