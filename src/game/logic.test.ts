@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { INITIAL_RESOURCES, RESOURCE_MAX, RESOURCE_MIN } from '@/game/constants'
 import { applyEffects, clampResource, createEmptyState } from '@/game/logic'
+import { DEFAULT_SCENARIO_ID } from '@/game/scenarios'
 
 describe('clampResource', () => {
   it('clamps to bounds', () => {
@@ -12,14 +13,14 @@ describe('clampResource', () => {
 
 describe('applyEffects', () => {
   it('applies resource deltas with clamping', () => {
-    const base = createEmptyState('test')
+    const base = createEmptyState('test', DEFAULT_SCENARIO_ID, 1983)
     const next = applyEffects(base, { resources: { funding: 60, secrecy: -120 } })
     expect(next.resources.funding).toBe(RESOURCE_MAX)
     expect(next.resources.secrecy).toBe(RESOURCE_MIN)
   })
 
   it('applies flag operations', () => {
-    const base = createEmptyState('test')
+    const base = createEmptyState('test', DEFAULT_SCENARIO_ID, 1983)
     const withFlags = applyEffects(base, { flags: { a: true, n: 2 } })
     expect(withFlags.flags.a).toBe(true)
     expect(withFlags.flags.n).toBe(2)
@@ -28,7 +29,7 @@ describe('applyEffects', () => {
   })
 
   it('preserves unspecified resources', () => {
-    const base = createEmptyState('test')
+    const base = createEmptyState('test', DEFAULT_SCENARIO_ID, 1983)
     const next = applyEffects(base, { resources: { funding: -5 } })
     expect(next.resources.personnelLoyalty).toBe(INITIAL_RESOURCES.personnelLoyalty)
   })

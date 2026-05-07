@@ -1,5 +1,4 @@
 import type { Card } from '@/data/types'
-import { CARDS_BY_ID } from '@/data/cards'
 import type { ResourceKey, Resources } from '@/game/types'
 
 export type MeterView = {
@@ -26,6 +25,6 @@ export function selectMeters(resources: Resources): MeterView[] {
   }))
 }
 
-export function selectCurrentCard(currentCardId: string): Card | null {
-  return CARDS_BY_ID[currentCardId] ?? null
+export function selectCurrentCard(currentCardId: string, cardsById: Record<string, Card>): Card | null {
+  return cardsById[currentCardId] ?? null
 }
