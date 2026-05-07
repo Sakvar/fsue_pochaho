@@ -776,7 +776,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { secrecy: 6, funding: -8, personnelLoyalty: -2 } },
       stamp: 'ТРЕБУЕТСЯ ПОДПИСЬ',
     },
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 3,
   },
   {
@@ -795,7 +795,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { secrecy: 5, funding: -9, kgbAttention: 6, personnelLoyalty: 2 }, flags: { rosnano_kpi_rejected: true } },
     },
     requiresFlags: ['rosnano_pipeline'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 3,
   },
   {
@@ -815,7 +815,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { facilityStability: 6, scientificProgress: 4, funding: -8, kgbAttention: 3 } },
     },
     requiresFlags: ['rosnano_pipeline'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 3,
   },
   {
@@ -834,7 +834,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { secrecy: 6, facilityStability: 4, funding: -6 } },
     },
     requiresFlags: ['rosnano_pipeline'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 3,
   },
   {
@@ -854,7 +854,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { facilityStability: 5, secrecy: 4, funding: -8, kgbAttention: 2 } },
     },
     requiresFlags: ['rosnano_pipeline'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 2,
   },
   {
@@ -875,7 +875,7 @@ export const CARD_LIST: Card[] = [
       stamp: 'ОТКЛОНЕНО',
     },
     requiresFlags: ['rosnano_showcase'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 3,
   },
   {
@@ -894,7 +894,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { facilityStability: 5, personnelLoyalty: 3, funding: -9 }, flags: { rosnano_unicorn: false } },
     },
     requiresFlags: ['rosnano_pipeline'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 2,
   },
   {
@@ -914,7 +914,7 @@ export const CARD_LIST: Card[] = [
       effects: { resources: { secrecy: 5, kgbAttention: 7, funding: -10, facilityStability: -2 }, flags: { rosnano_audit: true } },
     },
     requiresFlags: ['rosnano_spree'],
-    tags: ['rosnano_2011_2013'],
+    tags: ['pochaho_2011_2013'],
     weight: 2,
   },
 ]

@@ -46,7 +46,7 @@ export const SCENARIOS: Scenario[] = [
     id: 'pochaho_rosnano_2011',
     label: 'Почахо (2011)',
     startYear: 2011,
-    cards: scenarioCardsByTag('rosnano_2011_2013'),
+    cards: scenarioCardsByTag('pochaho_2011_2013'),
     characters: CHARACTERS,
     dossierCopy: DEFAULT_DOSSIER_COPY,
   },
