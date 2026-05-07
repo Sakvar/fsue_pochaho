@@ -7,6 +7,13 @@ import { buildDossierView } from '@/game/dossierCopy'
 import { getScenario, SCENARIOS } from '@/game/scenarios'
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
+import {
+  impact,
+  notify,
+  useTelegramBackButton,
+  useTelegramMainButton,
+  useTelegramWebApp,
+} from '@/telegram'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import '@/styles/app.css'
 
@@ -66,14 +73,52 @@ export default function App() {
     [resources, flags, meta, scenario.dossierCopy],
   )
 
+  const tg = useTelegramWebApp()
+  const inTelegram = tg !== null
+
   const handleClearStamp = useCallback(() => clearStamp(), [clearStamp])
+
+  const handleChoose = useCallback(
+    (side: 'left' | 'right') => {
+      if (inTelegram) impact('light')
+      choose(side)
+    },
+    [choose, inTelegram],
+  )
+
+  const handleRestart = useCallback(() => {
+    if (inTelegram) notify('success')
+    newGame()
+  }, [inTelegram, newGame])
 
   const left = card?.left
   const right = card?.right
   const isMobile = useMediaQuery('(max-width: 899px)')
 
+  // Inside Telegram on mobile, surface the dossier via the host BackButton:
+  // tapping it returns to the card tab instead of closing the mini app.
+  const showBackButton = inTelegram && isMobile && mobileTab === 'dossier' && phase === 'playing'
+  const backToCard = useCallback(() => setMobileTab('card'), [setMobileTab])
+  useTelegramBackButton({ enabled: showBackButton, onClick: backToCard })
+
+  // Mirror the "Новое назначение" action onto the Telegram MainButton when
+  // a run ends. The in-app button stays as a fallback for regular browsers
+  // and for any client that doesn't render the bottom button.
+  useTelegramMainButton({
+    enabled: inTelegram && phase === 'ended' && endingId !== null,
+    text: 'Новое назначение',
+    onClick: handleRestart,
+  })
+
+  // Notify the user with a haptic pulse when a run ends.
+  useEffect(() => {
+    if (!inTelegram) return
+    if (phase !== 'ended' || !endingId) return
+    notify('warning')
+  }, [inTelegram, phase, endingId])
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${inTelegram ? ' app-shell--telegram' : ''}`}>
       <header className="app-header">
         <h1 className="app-title">ФГУП «ПОЧАХО» — закрытое направление</h1>
         <div className="app-menu">
@@ -145,7 +190,7 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('left')}
+          onClick={() => handleChoose('left')}
           disabled={phase !== 'playing' || !left}
         >
           <span className="decision-btn__label">{left?.label ?? '—'}</span>
@@ -154,7 +199,7 @@ export default function App() {
         <button
           type="button"
           className="decision-btn"
-          onClick={() => choose('right')}
+          onClick={() => handleChoose('right')}
           disabled={phase !== 'playing' || !right}
         >
           <span className="decision-btn__label">{right?.label ?? '—'}</span>
@@ -164,7 +209,9 @@ export default function App() {
 
       <StampFeedback message={stampMessage} onDone={handleClearStamp} />
 
-      {phase === 'ended' && endingId ? <EndingScreen endingId={endingId} onRestart={newGame} /> : null}
+      {phase === 'ended' && endingId ? (
+        <EndingScreen endingId={endingId} onRestart={handleRestart} />
+      ) : null}
     </div>
   )
 }
