@@ -9,10 +9,12 @@ import { persist } from 'zustand/middleware'
 
 type GameStore = GameState & {
   dossierOpen: boolean
+  mobileTab: 'card' | 'dossier'
   stampMessage: string | null
   choose: (choice: ChoiceSide) => void
   newGame: () => void
   toggleDossier: () => void
+  setMobileTab: (tab: 'card' | 'dossier') => void
   clearStamp: () => void
 }
 
@@ -36,6 +38,7 @@ export const useGameStore = create<GameStore>()(
     (set, get) => ({
       ...bootstrapState(newRunId()),
       dossierOpen: true,
+      mobileTab: 'card',
       stampMessage: null,
       choose: (choice) => {
         const state = get()
@@ -62,14 +65,30 @@ export const useGameStore = create<GameStore>()(
         set({
           ...bootstrapState(newRunId()),
           dossierOpen: get().dossierOpen,
+          mobileTab: get().mobileTab,
           stampMessage: null,
         }),
       toggleDossier: () => set((s) => ({ dossierOpen: !s.dossierOpen })),
+      setMobileTab: (tab) => set({ mobileTab: tab }),
       clearStamp: () => set({ stampMessage: null }),
     }),
     {
       name: 'pochaho-save',
-      version: 1,
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<GameStore> | undefined
+        if (!state) return persisted as GameStore
+        if (version < 2) {
+          return {
+            ...state,
+            mobileTab: 'card',
+          } as GameStore
+        }
+        if (!state.mobileTab) {
+          return { ...state, mobileTab: 'card' } as GameStore
+        }
+        return persisted as GameStore
+      },
       partialize: (state) => ({
         resources: state.resources,
         flags: state.flags,
@@ -80,6 +99,7 @@ export const useGameStore = create<GameStore>()(
         lastCardId: state.lastCardId,
         history: state.history,
         dossierOpen: state.dossierOpen,
+        mobileTab: state.mobileTab,
       }),
     },
   ),
