@@ -1,0 +1,44 @@
+/*
+ * Styles applied only when the document is hosted by Telegram. The
+ * `data-telegram="true"` attribute is set by `applyTelegramThemeToCss`
+ * after the WebApp SDK is initialised, so these rules never bleed into
+ * the regular browser experience.
+ */
+
+html[data-telegram='true'] {
+  /* Telegram clients can report a viewport that's shorter than the visual
+   * window height (because of the bottom button area). Use the value
+   * provided by the SDK if present; otherwise fall back to dynamic vh. */
+  --tg-viewport-height: 100dvh;
+}
+
+html[data-telegram='true'],
+html[data-telegram='true'] body {
+  background-color: var(--tg-bg, var(--paper));
+  /* Disable the page-level grain texture on dark Telegram themes — the
+   * embedded SVG noise was authored for the off-white paper canvas and
+   * looks like dust against dark backgrounds. */
+}
+
+html[data-telegram='true'][data-telegram-scheme='dark'] body {
+  background-image: none;
+}
+
+html[data-telegram='true'][data-telegram-scheme='dark'] .decision-card,
+html[data-telegram='true'][data-telegram-scheme='dark'] .ending-screen__panel {
+  background: var(--paper-dark);
+}
+
+html[data-telegram='true'][data-telegram-scheme='dark'] .decision-card::before {
+  opacity: 0.12;
+}
+
+html[data-telegram='true'] .app-shell--telegram {
+  min-height: var(--tg-viewport-height, 100dvh);
+}
+
+/* Hide the in-app restart CTA when the Telegram MainButton is taking over.
+ * The screen still works as a modal but the action lives in Telegram chrome. */
+html[data-telegram='true'] .ending-screen__restart {
+  display: none;
+}
