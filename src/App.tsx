@@ -60,6 +60,8 @@ export default function App() {
   const toggleDossier = useGameStore((s) => s.toggleDossier)
   const setMobileTab = useGameStore((s) => s.setMobileTab)
   const clearStamp = useGameStore((s) => s.clearStamp)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [scenarioMenuOpen, setScenarioMenuOpen] = useState(true)
 
   const scenario = useMemo(() => getScenario(meta.scenarioId), [meta.scenarioId])
   const meters = useMemo(() => selectMeters(resources), [resources])
@@ -74,15 +76,22 @@ export default function App() {
         scenario: entry,
         selectable: canSelectScenario(entry.id, institute, meta.scenarioId),
         unlocked: isScenarioUnlocked(entry.id, institute),
-        hint: scenarioLockHint(entry.id),
+        hint: scenarioLockHint(entry.id) ?? 'Доступен сразу.',
       })),
     [institute, meta.scenarioId],
   )
-  const lockedHints = scenarioOptions
-    .filter((entry) => !entry.selectable && entry.hint)
-    .map((entry) => `${entry.scenario.label}: ${entry.hint}`)
 
   const handleClearStamp = useCallback(() => clearStamp(), [clearStamp])
+  const handleOpenMenu = useCallback(() => setMenuOpen(true), [])
+  const handleCloseMenu = useCallback(() => setMenuOpen(false), [])
+  const handleChooseScenario = useCallback(
+    (scenarioId: string, selectable: boolean) => {
+      if (!selectable) return
+      setScenario(scenarioId)
+      setMenuOpen(false)
+    },
+    [setScenario],
+  )
   const handleChooseLeft = useCallback(() => {
     telegramImpact('medium')
     choose('left')
@@ -93,6 +102,14 @@ export default function App() {
   }, [choose])
 
   useEffect(() => initTelegramMiniApp(), [])
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [menuOpen])
 
   const left = card?.left
   const right = card?.right
@@ -103,26 +120,15 @@ export default function App() {
       <header className="app-header">
         <h1 className="app-title">ФГУП «ПОЧАХО» — закрытое направление</h1>
         <div className="app-menu">
-          <label className="app-menu__label" htmlFor="scenario-select">
-            Тематика
-          </label>
-          <select
-            id="scenario-select"
-            className="app-menu__select"
-            value={scenario.id}
-            onChange={(e) => setScenario(e.target.value)}
-            aria-label="Выбор тематики"
+          <button
+            type="button"
+            className="app-menu__button"
+            onClick={handleOpenMenu}
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
           >
-            {scenarioOptions.map(({ scenario: scenarioOption, selectable, unlocked }) => (
-              <option key={scenarioOption.id} value={scenarioOption.id} disabled={!selectable}>
-                {unlocked ? scenarioOption.label : `${scenarioOption.label} (закрыто)`}
-              </option>
-            ))}
-          </select>
-          {lockedHints.length > 0 ? <p className="app-menu__note">{lockedHints[0]}</p> : null}
-          {!isScenarioUnlocked(scenario.id, institute) ? (
-            <p className="app-menu__note">Текущий сценарий продолжается по сохранению, даже если он сейчас закрыт.</p>
-          ) : null}
+            Меню
+          </button>
         </div>
       </header>
       <StatusBars meters={meters} />
@@ -193,6 +199,58 @@ export default function App() {
       </div>
 
       <StampFeedback message={stampMessage} onDone={handleClearStamp} />
+
+      {menuOpen ? (
+        <div className="menu-popup-layer" role="dialog" aria-modal="true" aria-labelledby="menu-title" onClick={handleCloseMenu}>
+          <div className="menu-popup" onClick={(event) => event.stopPropagation()}>
+            <div className="menu-popup__header">
+              <h2 id="menu-title" className="menu-popup__title">
+                Служебное меню
+              </h2>
+              <button type="button" className="menu-popup__close" onClick={handleCloseMenu} aria-label="Закрыть меню">
+                Закрыть
+              </button>
+            </div>
+            <section className="menu-popup__section">
+              <button
+                type="button"
+                className="menu-popup__submenu-toggle"
+                onClick={() => setScenarioMenuOpen((value) => !value)}
+                aria-expanded={scenarioMenuOpen}
+              >
+                Сценарии
+              </button>
+              {scenarioMenuOpen ? (
+                <ul className="menu-popup__scenario-list">
+                  {scenarioOptions.map(({ scenario: scenarioOption, selectable, unlocked, hint }) => {
+                    const isCurrent = scenarioOption.id === scenario.id
+                    return (
+                      <li key={scenarioOption.id} className="menu-popup__scenario-item">
+                        <button
+                          type="button"
+                          className="menu-popup__scenario-button"
+                          onClick={() => handleChooseScenario(scenarioOption.id, selectable)}
+                          disabled={!selectable}
+                        >
+                          {scenarioOption.label}
+                          {isCurrent ? ' (текущий)' : ''}
+                          {!unlocked ? ' [закрыт]' : ''}
+                        </button>
+                        <p className="menu-popup__scenario-hint">
+                          Условие: {hint}
+                          {!unlocked && isCurrent
+                            ? ' Текущий запуск можно продолжать из сохранения.'
+                            : ''}
+                        </p>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {phase === 'ended' && endingId ? (
         <EndingScreen endingId={endingId} rewards={endingRewards} onRestart={newGame} />
