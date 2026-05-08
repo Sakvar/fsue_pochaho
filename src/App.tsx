@@ -4,7 +4,7 @@ import { FacilityDossier } from '@/components/FacilityDossier'
 import { StampFeedback } from '@/components/StampFeedback'
 import { StatusBars } from '@/components/StatusBars'
 import { buildDossierView } from '@/game/dossierCopy'
-import { getScenario, SCENARIOS } from '@/game/scenarios'
+import { canSelectScenario, getScenario, isScenarioUnlocked, scenarioLockHint, SCENARIOS } from '@/game/scenarios'
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
 import { initTelegramMiniApp, telegramImpact } from '@/integrations/telegram'
@@ -44,11 +44,13 @@ function useMediaQuery(query: string): boolean {
 export default function App() {
   const resources = useGameStore((s) => s.resources)
   const flags = useGameStore((s) => s.flags)
+  const institute = useGameStore((s) => s.institute)
   const meta = useGameStore((s) => s.meta)
   const currentCardId = useGameStore((s) => s.currentCardId)
   const cardsById = useGameStore((s) => s.cardsById)
   const phase = useGameStore((s) => s.phase)
   const endingId = useGameStore((s) => s.endingId)
+  const endingRewards = useGameStore((s) => s.endingRewards)
   const dossierOpen = useGameStore((s) => s.dossierOpen)
   const mobileTab = useGameStore((s) => s.mobileTab)
   const stampMessage = useGameStore((s) => s.stampMessage)
@@ -63,9 +65,22 @@ export default function App() {
   const meters = useMemo(() => selectMeters(resources), [resources])
   const card = useMemo(() => selectCurrentCard(currentCardId, cardsById), [currentCardId, cardsById])
   const dossierModel = useMemo(
-    () => buildDossierView({ resources, flags, meta }, scenario.dossierCopy),
-    [resources, flags, meta, scenario.dossierCopy],
+    () => buildDossierView({ resources, flags, meta, institute }, scenario.dossierCopy),
+    [resources, flags, meta, institute, scenario.dossierCopy],
   )
+  const scenarioOptions = useMemo(
+    () =>
+      SCENARIOS.map((entry) => ({
+        scenario: entry,
+        selectable: canSelectScenario(entry.id, institute, meta.scenarioId),
+        unlocked: isScenarioUnlocked(entry.id, institute),
+        hint: scenarioLockHint(entry.id),
+      })),
+    [institute, meta.scenarioId],
+  )
+  const lockedHints = scenarioOptions
+    .filter((entry) => !entry.selectable && entry.hint)
+    .map((entry) => `${entry.scenario.label}: ${entry.hint}`)
 
   const handleClearStamp = useCallback(() => clearStamp(), [clearStamp])
   const handleChooseLeft = useCallback(() => {
@@ -98,12 +113,16 @@ export default function App() {
             onChange={(e) => setScenario(e.target.value)}
             aria-label="Выбор тематики"
           >
-            {SCENARIOS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
+            {scenarioOptions.map(({ scenario: scenarioOption, selectable, unlocked }) => (
+              <option key={scenarioOption.id} value={scenarioOption.id} disabled={!selectable}>
+                {unlocked ? scenarioOption.label : `${scenarioOption.label} (закрыто)`}
               </option>
             ))}
           </select>
+          {lockedHints.length > 0 ? <p className="app-menu__note">{lockedHints[0]}</p> : null}
+          {!isScenarioUnlocked(scenario.id, institute) ? (
+            <p className="app-menu__note">Текущий сценарий продолжается по сохранению, даже если он сейчас закрыт.</p>
+          ) : null}
         </div>
       </header>
       <StatusBars meters={meters} />
@@ -175,7 +194,9 @@ export default function App() {
 
       <StampFeedback message={stampMessage} onDone={handleClearStamp} />
 
-      {phase === 'ended' && endingId ? <EndingScreen endingId={endingId} onRestart={newGame} /> : null}
+      {phase === 'ended' && endingId ? (
+        <EndingScreen endingId={endingId} rewards={endingRewards} onRestart={newGame} />
+      ) : null}
     </div>
   )
 }

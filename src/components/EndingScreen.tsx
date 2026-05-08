@@ -1,11 +1,14 @@
 import { getEndingCopy } from '@/game/endings'
+import { DEPARTMENT_LABELS, PROJECT_LABELS } from '@/game/instituteCatalog'
+import type { EndingRewardsSummary } from '@/game/types'
 
 type Props = {
   endingId: string
+  rewards: EndingRewardsSummary | null
   onRestart: () => void
 }
 
-export function EndingScreen({ endingId, onRestart }: Props) {
+export function EndingScreen({ endingId, rewards, onRestart }: Props) {
   const ending = getEndingCopy(endingId)
   const title = ending?.title ?? 'Исход'
   const body = ending?.body ?? 'Состояние не классифицировано.'
@@ -21,6 +24,23 @@ export function EndingScreen({ endingId, onRestart }: Props) {
           {title}
         </h1>
         <p className="ending-screen__body">{body}</p>
+        {rewards ? (
+          <section className="ending-screen__rewards" aria-label="Итоги назначения">
+            <h2>Наследие назначения</h2>
+            <ul>
+              <li>Репутация института: {rewards.reputationDelta >= 0 ? `+${rewards.reputationDelta}` : rewards.reputationDelta}</li>
+              {rewards.archiveEntries.map((entry) => (
+                <li key={entry}>Архив: {entry}</li>
+              ))}
+              {rewards.unlockedDepartments.map((department) => (
+                <li key={department}>Открыт отдел: {DEPARTMENT_LABELS[department]}</li>
+              ))}
+              {rewards.unlockedProjects.map((project) => (
+                <li key={project}>Доступен проект: {PROJECT_LABELS[project]}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <button type="button" className="ending-screen__restart" onClick={onRestart}>
           Новое назначение
         </button>

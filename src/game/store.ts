@@ -2,9 +2,11 @@ import type { Card } from '@/data/types'
 import { HISTORY_LIMIT, STAMP_MESSAGES } from '@/game/constants'
 import { pickNextCard } from '@/game/cardEngine'
 import { evaluateEnding } from '@/game/endings'
+import { createDefaultInstituteState, normalizeInstituteState } from '@/game/institute'
 import { advanceMeta, applyEffects, createEmptyState } from '@/game/logic'
-import { DEFAULT_SCENARIO_ID, getScenario } from '@/game/scenarios'
-import type { ChoiceSide, GameState } from '@/game/types'
+import { applyEndingRewards } from '@/game/rewards'
+import { canSelectScenario, DEFAULT_SCENARIO_ID, getScenario } from '@/game/scenarios'
+import type { ChoiceSide, GameState, InstituteState } from '@/game/types'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -31,9 +33,13 @@ function randomStamp(): string {
   return STAMP_MESSAGES[idx] ?? 'ЗАРЕГИСТРИРОВАНО'
 }
 
-export function bootstrapState(runId: string, scenarioId: string): GameState & { cards: Card[]; cardsById: Record<string, Card> } {
+export function bootstrapState(
+  runId: string,
+  scenarioId: string,
+  institute: InstituteState = createDefaultInstituteState(),
+): GameState & { cards: Card[]; cardsById: Record<string, Card> } {
   const scenario = getScenario(scenarioId)
-  const empty = createEmptyState(runId, scenario.id, scenario.startYear)
+  const empty = createEmptyState(runId, scenario.id, scenario.startYear, institute)
   const cards = scenario.cards
   const cardsById = buildCardsById(cards)
   const firstId = pickNextCard(empty, cards, Math.random)
@@ -42,6 +48,42 @@ export function bootstrapState(runId: string, scenarioId: string): GameState & {
 
 function newRunId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : 'offline-run'
+}
+
+type PersistedStore = Partial<GameStore>
+
+export function migratePersistedState(persisted: unknown, version: number): PersistedStore {
+  const state = persisted as PersistedStore | undefined
+  if (!state) return {}
+  let migrated: PersistedStore = { ...state }
+
+  if (version < 2 && !migrated.mobileTab) {
+    migrated = { ...migrated, mobileTab: 'card' }
+  }
+  if (version < 3) {
+    const nextMeta = migrated.meta ? { ...migrated.meta, scenarioId: DEFAULT_SCENARIO_ID } : undefined
+    migrated = { ...migrated, meta: nextMeta }
+  }
+
+  const currentMeta = migrated.meta as Partial<GameState['meta']> | undefined
+  migrated.meta = {
+    turn: typeof currentMeta?.turn === 'number' ? currentMeta.turn : 0,
+    year: typeof currentMeta?.year === 'number' ? currentMeta.year : getScenario(DEFAULT_SCENARIO_ID).startYear,
+    runId: currentMeta?.runId ?? newRunId(),
+    scenarioId: currentMeta?.scenarioId ?? DEFAULT_SCENARIO_ID,
+    endingRewardsApplied:
+      typeof currentMeta?.endingRewardsApplied === 'boolean'
+        ? currentMeta.endingRewardsApplied
+        : migrated.phase === 'ended',
+  }
+
+  migrated.institute = normalizeInstituteState(migrated.institute as Partial<InstituteState> | undefined)
+  migrated.endingRewards = migrated.endingRewards ?? null
+
+  if (!migrated.mobileTab) {
+    migrated.mobileTab = 'card'
+  }
+  return migrated
 }
 
 export const useGameStore = create<GameStore>()(
@@ -65,7 +107,8 @@ export const useGameStore = create<GameStore>()(
         const endingId = evaluateEnding(next)
         const stamp = option.stamp ?? randomStamp()
         if (endingId) {
-          set({ ...next, phase: 'ended', endingId, stampMessage: stamp, cards: state.cards, cardsById: state.cardsById })
+          const ended = applyEndingRewards({ ...next, phase: 'ended', endingId }, endingId)
+          set({ ...ended, stampMessage: stamp, cards: state.cards, cardsById: state.cardsById })
           return
         }
         const forced = card.followUp?.[choice]
@@ -74,55 +117,37 @@ export const useGameStore = create<GameStore>()(
       },
       newGame: () =>
         set({
-          ...bootstrapState(newRunId(), get().meta.scenarioId),
+          ...bootstrapState(newRunId(), get().meta.scenarioId, get().institute),
           dossierOpen: get().dossierOpen,
           mobileTab: get().mobileTab,
           stampMessage: null,
         }),
-      setScenario: (scenarioId) =>
+      setScenario: (scenarioId) => {
+        const state = get()
+        if (!canSelectScenario(scenarioId, state.institute, state.meta.scenarioId)) return
         set({
-          ...bootstrapState(newRunId(), scenarioId),
-          dossierOpen: get().dossierOpen,
-          mobileTab: get().mobileTab,
+          ...bootstrapState(newRunId(), scenarioId, state.institute),
+          dossierOpen: state.dossierOpen,
+          mobileTab: state.mobileTab,
           stampMessage: null,
-        }),
+        })
+      },
       toggleDossier: () => set((s) => ({ dossierOpen: !s.dossierOpen })),
       setMobileTab: (tab) => set({ mobileTab: tab }),
       clearStamp: () => set({ stampMessage: null }),
     }),
     {
       name: 'pochaho-save',
-      version: 3,
-      migrate: (persisted, version) => {
-        const state = persisted as Partial<GameStore> | undefined
-        if (!state) return persisted as GameStore
-        if (version < 2) {
-          return {
-            ...state,
-            mobileTab: 'card',
-          } as GameStore
-        }
-        if (version < 3) {
-          const nextMeta = state.meta ? { ...state.meta, scenarioId: DEFAULT_SCENARIO_ID } : undefined
-          return {
-            ...state,
-            meta: nextMeta,
-          } as GameStore
-        }
-        if (!state.meta?.scenarioId) {
-          return { ...state, meta: { ...(state.meta as GameState['meta']), scenarioId: DEFAULT_SCENARIO_ID } } as GameStore
-        }
-        if (!state.mobileTab) {
-          return { ...state, mobileTab: 'card' } as GameStore
-        }
-        return persisted as GameStore
-      },
+      version: 4,
+      migrate: migratePersistedState,
       partialize: (state) => ({
         resources: state.resources,
         flags: state.flags,
+        institute: state.institute,
         meta: state.meta,
         phase: state.phase,
         endingId: state.endingId,
+        endingRewards: state.endingRewards,
         currentCardId: state.currentCardId,
         lastCardId: state.lastCardId,
         history: state.history,

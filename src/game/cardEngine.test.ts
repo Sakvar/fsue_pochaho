@@ -49,6 +49,42 @@ const catalog: Card[] = [
     left: { label: 'L', previewHint: 'x', effects: {} },
     right: { label: 'R', previewHint: 'y', effects: {} },
   },
+  {
+    id: 'needs_department',
+    title: 'D',
+    speaker: 'S',
+    body: 'B',
+    conditions: { requiresDepartment: ['anomaly_lab'] },
+    left: { label: 'L', previewHint: 'x', effects: {} },
+    right: { label: 'R', previewHint: 'y', effects: {} },
+  },
+  {
+    id: 'needs_project_status',
+    title: 'P',
+    speaker: 'S',
+    body: 'B',
+    conditions: { requiresProjectStatus: { lunar_program: 'active' } },
+    left: { label: 'L', previewHint: 'x', effects: {} },
+    right: { label: 'R', previewHint: 'y', effects: {} },
+  },
+  {
+    id: 'needs_archive_entry',
+    title: 'AR',
+    speaker: 'S',
+    body: 'B',
+    conditions: { hasArchiveEntry: ['archive:test_entry'] },
+    left: { label: 'L', previewHint: 'x', effects: {} },
+    right: { label: 'R', previewHint: 'y', effects: {} },
+  },
+  {
+    id: 'blocked_by_archive_entry',
+    title: 'BAR',
+    speaker: 'S',
+    body: 'B',
+    conditions: { missingArchiveEntry: ['archive:test_entry'] },
+    left: { label: 'L', previewHint: 'x', effects: {} },
+    right: { label: 'R', previewHint: 'y', effects: {} },
+  },
 ]
 
 describe('cardEngine', () => {
@@ -68,6 +104,29 @@ describe('cardEngine', () => {
     expect(isCardEligible(base, catalog.find((c) => c.id === 'conditional')!)).toBe(false)
     base.resources.funding = 60
     expect(isCardEligible(base, catalog.find((c) => c.id === 'conditional')!)).toBe(true)
+  })
+
+  it('filters institute departments and project statuses', () => {
+    const base = createEmptyState('t', DEFAULT_SCENARIO_ID, 1983)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_department')!)).toBe(false)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_project_status')!)).toBe(false)
+
+    base.institute.unlockedDepartments.push('anomaly_lab')
+    base.institute.projects.lunar_program.status = 'active'
+
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_department')!)).toBe(true)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_project_status')!)).toBe(true)
+  })
+
+  it('filters archive conditions similar to flags', () => {
+    const base = createEmptyState('t', DEFAULT_SCENARIO_ID, 1983)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_archive_entry')!)).toBe(false)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'blocked_by_archive_entry')!)).toBe(true)
+
+    base.institute.archive.push('archive:test_entry')
+
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'needs_archive_entry')!)).toBe(true)
+    expect(isCardEligible(base, catalog.find((c) => c.id === 'blocked_by_archive_entry')!)).toBe(false)
   })
 
   it('pickNextCard returns a valid id', () => {

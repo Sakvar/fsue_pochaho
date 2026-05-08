@@ -1,10 +1,26 @@
-import type { ResourceKey } from '@/game/types'
+import type { DepartmentId, ProjectId, ProjectStatus, ResourceKey } from '@/game/types'
 
 export type FlagEffectValue = boolean | number | 'toggle'
 
 export type CardEffects = {
   resources?: Partial<Record<ResourceKey, number>>
   flags?: Record<string, FlagEffectValue>
+  institute?: {
+    reputation?: number
+    unlockDepartments?: DepartmentId[]
+    unlockTechnologies?: string[]
+    archiveEntries?: string[]
+  }
+  projects?: Partial<
+    Record<
+      ProjectId,
+      {
+        progress?: number
+        risk?: number
+        status?: ProjectStatus
+      }
+    >
+  >
 }
 
 export type CardConditions = {
@@ -12,6 +28,10 @@ export type CardConditions = {
   maxResource?: Partial<Record<ResourceKey, number>>
   hasFlag?: string[]
   missingFlag?: string[]
+  requiresDepartment?: DepartmentId[]
+  requiresProjectStatus?: Partial<Record<ProjectId, ProjectStatus>>
+  hasArchiveEntry?: string[]
+  missingArchiveEntry?: string[]
   turnGte?: number
 }
 
