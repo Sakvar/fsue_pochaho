@@ -6,12 +6,20 @@
   overflow-x: hidden;
 }
 
+.runtime-telegram-mini-app .app-shell {
+  min-height: var(--tg-viewport-height, 100dvh);
+}
+
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.75rem 0.75rem 0.35rem;
+}
+
+.runtime-telegram-mini-app .app-header {
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
 }
 
 .app-menu {
