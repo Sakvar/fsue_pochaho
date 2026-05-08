@@ -35,6 +35,27 @@ function matchesConditions(state: GameState, card: Card): boolean {
       if (isFlagTruthy(state.flags, key)) return false
     }
   }
+  if (c.requiresDepartment) {
+    for (const departmentId of c.requiresDepartment) {
+      if (!state.institute.unlockedDepartments.includes(departmentId)) return false
+    }
+  }
+  if (c.requiresProjectStatus) {
+    for (const [projectId, status] of Object.entries(c.requiresProjectStatus)) {
+      if (!status) continue
+      if (state.institute.projects[projectId as keyof typeof state.institute.projects]?.status !== status) return false
+    }
+  }
+  if (c.hasArchiveEntry) {
+    for (const archiveEntry of c.hasArchiveEntry) {
+      if (!state.institute.archive.includes(archiveEntry)) return false
+    }
+  }
+  if (c.missingArchiveEntry) {
+    for (const archiveEntry of c.missingArchiveEntry) {
+      if (state.institute.archive.includes(archiveEntry)) return false
+    }
+  }
   return true
 }
 

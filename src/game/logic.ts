@@ -5,6 +5,8 @@ import {
   RESOURCE_MIN,
   TURNS_PER_YEAR,
 } from '@/game/constants'
+import { createDefaultInstituteState, mergeUnique, normalizeInstituteState } from '@/game/institute'
+import { applyProjectEffects } from '@/game/projects'
 import type { GameState, Resources } from '@/game/types'
 
 export function clampResource(value: number): number {
@@ -53,7 +55,21 @@ export function applyEffects(state: GameState, effects: CardEffects): GameState 
       flags = applyFlagValue(flags, k, effect)
     }
   }
-  return { ...state, resources, flags }
+  let institute = state.institute
+  if (effects.institute) {
+    institute = {
+      ...institute,
+      reputation: institute.reputation + (effects.institute.reputation ?? 0),
+      unlockedDepartments: mergeUnique(institute.unlockedDepartments, effects.institute.unlockDepartments),
+      unlockedTechnologies: mergeUnique(institute.unlockedTechnologies, effects.institute.unlockTechnologies),
+      archive: mergeUnique(institute.archive, effects.institute.archiveEntries),
+    }
+  }
+  const projects = applyProjectEffects(institute.projects, effects.projects)
+  if (projects !== institute.projects) {
+    institute = { ...institute, projects }
+  }
+  return { ...state, resources, flags, institute }
 }
 
 export function advanceMeta(state: GameState): GameState {
@@ -66,13 +82,20 @@ export function advanceMeta(state: GameState): GameState {
   }
 }
 
-export function createEmptyState(runId: string, scenarioId: string, startYear: number): GameState {
+export function createEmptyState(
+  runId: string,
+  scenarioId: string,
+  startYear: number,
+  instituteState = createDefaultInstituteState(),
+): GameState {
   return {
     resources: { ...INITIAL_RESOURCES },
     flags: {},
-    meta: { turn: 0, year: startYear, runId, scenarioId },
+    institute: normalizeInstituteState(instituteState),
+    meta: { turn: 0, year: startYear, runId, scenarioId, endingRewardsApplied: false },
     phase: 'playing',
     endingId: null,
+    endingRewards: null,
     currentCardId: '',
     lastCardId: null,
     history: [],

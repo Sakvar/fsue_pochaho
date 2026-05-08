@@ -1,4 +1,5 @@
 import type { Card } from '@/data/types'
+import { META_CARD_LIST } from '@/data/metaCardContent'
 
 export const CARD_LIST: Card[] = [
   {
@@ -917,4 +918,5 @@ export const CARD_LIST: Card[] = [
     tags: ['pochaho_2011_2013'],
     weight: 2,
   },
+  ...META_CARD_LIST,
 ]

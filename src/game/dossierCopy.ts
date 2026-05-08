@@ -1,4 +1,5 @@
 import { isFlagTruthy } from '@/game/cardEngine'
+import { DEPARTMENT_LABELS, PROJECT_LABELS, PROJECT_STATUS_LABELS } from '@/game/instituteCatalog'
 import type { GameState } from '@/game/types'
 
 export type RumorRule = {
@@ -116,9 +117,19 @@ function reputationLine(state: Pick<GameState, 'resources'>): string {
 export type DossierViewModel = {
   year: number
   turn: number
+  resourcesSummary: { key: string; label: string; value: number }[]
+  instituteLevel: number
+  instituteReputation: number
+  completedRuns: number
+  unlockedDepartments: string[]
+  availableProjects: { id: string; label: string; progress: number; risk: number; statusLabel: string }[]
+  activeProjects: { id: string; label: string; progress: number; risk: number; statusLabel: string }[]
+  completedProjects: { id: string; label: string; progress: number; risk: number; statusLabel: string }[]
+  failedProjects: { id: string; label: string; progress: number; risk: number; statusLabel: string }[]
+  archiveEntries: string[]
   rumors: string[]
   crises: string[]
-  reputation: string
+  runReputation: string
 }
 
 export type DossierCopy = {
@@ -134,16 +145,43 @@ export const DEFAULT_DOSSIER_COPY: DossierCopy = {
 }
 
 export function buildDossierView(
-  state: Pick<GameState, 'resources' | 'flags' | 'meta'>,
+  state: Pick<GameState, 'resources' | 'flags' | 'meta' | 'institute'>,
   copy: DossierCopy = DEFAULT_DOSSIER_COPY,
 ): DossierViewModel {
+  const resourcesSummary = [
+    { key: 'personnelLoyalty', label: 'Лояльность', value: state.resources.personnelLoyalty },
+    { key: 'kgbAttention', label: 'Кураторство', value: state.resources.kgbAttention },
+    { key: 'scientificProgress', label: 'Наука', value: state.resources.scientificProgress },
+    { key: 'facilityStability', label: 'Стабильность', value: state.resources.facilityStability },
+    { key: 'secrecy', label: 'Секретность', value: state.resources.secrecy },
+    { key: 'funding', label: 'Бюджет', value: state.resources.funding },
+  ]
   const rumors = copy.rumors.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
   const crises = copy.crises.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
+  const projectCards = Object.values(state.institute.projects).map((project) => ({
+    id: project.id,
+    label: PROJECT_LABELS[project.id],
+    progress: project.progress,
+    risk: project.risk,
+    statusLabel: PROJECT_STATUS_LABELS[project.status],
+    status: project.status,
+  }))
+
   return {
     year: state.meta.year,
     turn: state.meta.turn,
+    resourcesSummary,
+    instituteLevel: state.institute.level,
+    instituteReputation: state.institute.reputation,
+    completedRuns: state.institute.completedRuns,
+    unlockedDepartments: state.institute.unlockedDepartments.map((id) => DEPARTMENT_LABELS[id]),
+    availableProjects: projectCards.filter((project) => project.status === 'available'),
+    activeProjects: projectCards.filter((project) => project.status === 'active'),
+    completedProjects: projectCards.filter((project) => project.status === 'completed'),
+    failedProjects: projectCards.filter((project) => project.status === 'failed'),
+    archiveEntries: [...state.institute.archive].reverse(),
     rumors: rumors.slice(0, 6),
     crises: crises.slice(0, 4),
-    reputation: copy.reputationLine(state),
+    runReputation: copy.reputationLine(state),
   }
 }
