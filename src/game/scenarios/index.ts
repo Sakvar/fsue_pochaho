@@ -18,6 +18,16 @@ export type Scenario = {
 
 export const DEFAULT_SCENARIO_ID = 'pochaho_classic'
 export const ROSNANO_SCENARIO_ARCHIVE_UNLOCK = 'ending:win_breakthrough'
+const SCENARIO_THEME_TAGS = ['pochaho_2011_2013'] as const
+
+function isTaggedForOtherScenario(card: Card, excludedTag: string): boolean {
+  if (!card.tags || card.tags.length === 0) return false
+  return SCENARIO_THEME_TAGS.some((tag) => tag !== excludedTag && card.tags?.includes(tag))
+}
+
+function baseScenarioCards(): Card[] {
+  return CARD_LIST.filter((card) => !isTaggedForOtherScenario(card, ''))
+}
 
 function scenarioCardsByTag(tag: string): Card[] {
   const fallback = CARD_LIST.filter((c) => c.tags?.includes('fallback'))
@@ -32,7 +42,7 @@ export const SCENARIOS: Scenario[] = [
     id: 'pochaho_classic',
     label: 'Классика (1983)',
     startYear: START_YEAR,
-    cards: CARD_LIST,
+    cards: baseScenarioCards(),
     characters: CHARACTERS,
     dossierCopy: DEFAULT_DOSSIER_COPY,
   },
@@ -40,7 +50,7 @@ export const SCENARIOS: Scenario[] = [
     id: 'pochaho_late_start',
     label: 'Поздний запуск (1988)',
     startYear: 1988,
-    cards: CARD_LIST,
+    cards: baseScenarioCards(),
     characters: CHARACTERS,
     dossierCopy: DEFAULT_DOSSIER_COPY,
   },

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultInstituteState } from '@/game/institute'
-import { ROSNANO_SCENARIO_ARCHIVE_UNLOCK, canSelectScenario, isScenarioUnlocked } from '@/game/scenarios'
+import {
+  ROSNANO_SCENARIO_ARCHIVE_UNLOCK,
+  canSelectScenario,
+  getScenario,
+  isScenarioUnlocked,
+} from '@/game/scenarios'
 
 describe('scenario unlocks', () => {
   it('keeps classic open and gates others by run count', () => {
@@ -27,5 +32,17 @@ describe('scenario unlocks', () => {
     const institute = createDefaultInstituteState()
     expect(canSelectScenario('pochaho_rosnano_2011', institute, 'pochaho_rosnano_2011')).toBe(true)
     expect(canSelectScenario('pochaho_rosnano_2011', institute, 'pochaho_classic')).toBe(false)
+  })
+
+  it('keeps scenario card pools separated by theme tags', () => {
+    const classic = getScenario('pochaho_classic')
+    const late = getScenario('pochaho_late_start')
+    const rosnano = getScenario('pochaho_rosnano_2011')
+
+    expect(classic.cards.some((card) => card.id === 'rosnano_briefcase_arrives')).toBe(false)
+    expect(late.cards.some((card) => card.id === 'rosnano_briefcase_arrives')).toBe(false)
+    expect(classic.cards.some((card) => card.id === 'meta_lunar_deadline')).toBe(true)
+    expect(rosnano.cards.some((card) => card.id === 'rosnano_briefcase_arrives')).toBe(true)
+    expect(rosnano.cards.some((card) => card.id === 'meta_lunar_deadline')).toBe(false)
   })
 })
