@@ -117,7 +117,6 @@ function reputationLine(state: Pick<GameState, 'resources'>): string {
 export type DossierViewModel = {
   year: number
   turn: number
-  resourcesSummary: { key: string; label: string; value: number }[]
   instituteLevel: number
   instituteReputation: number
   completedRuns: number
@@ -148,14 +147,6 @@ export function buildDossierView(
   state: Pick<GameState, 'resources' | 'flags' | 'meta' | 'institute'>,
   copy: DossierCopy = DEFAULT_DOSSIER_COPY,
 ): DossierViewModel {
-  const resourcesSummary = [
-    { key: 'personnelLoyalty', label: 'Лояльность', value: state.resources.personnelLoyalty },
-    { key: 'kgbAttention', label: 'Кураторство', value: state.resources.kgbAttention },
-    { key: 'scientificProgress', label: 'Наука', value: state.resources.scientificProgress },
-    { key: 'facilityStability', label: 'Стабильность', value: state.resources.facilityStability },
-    { key: 'secrecy', label: 'Секретность', value: state.resources.secrecy },
-    { key: 'funding', label: 'Бюджет', value: state.resources.funding },
-  ]
   const rumors = copy.rumors.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
   const crises = copy.crises.filter((r) => ruleMatches(state.flags, r)).map((r) => r.text)
   const projectCards = Object.values(state.institute.projects).map((project) => ({
@@ -170,7 +161,6 @@ export function buildDossierView(
   return {
     year: state.meta.year,
     turn: state.meta.turn,
-    resourcesSummary,
     instituteLevel: state.institute.level,
     instituteReputation: state.institute.reputation,
     completedRuns: state.institute.completedRuns,

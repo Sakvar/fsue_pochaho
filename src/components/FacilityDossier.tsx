@@ -1,3 +1,4 @@
+import { useCallback, useState, type ReactNode } from 'react'
 import type { DossierViewModel } from '@/game/dossierCopy'
 
 type Props = {
@@ -6,7 +7,55 @@ type Props = {
   onToggle: () => void
 }
 
+type DossierAccordionId =
+  | 'departments'
+  | 'projects'
+  | 'archive'
+  | 'rumors'
+  | 'crises'
+  | 'reputation'
+
+type PanelProps = {
+  id: DossierAccordionId
+  title: string
+  expandedId: DossierAccordionId | null
+  onSelect: (id: DossierAccordionId) => void
+  children: ReactNode
+}
+
+function DossierAccordionPanel({ id, title, expandedId, onSelect, children }: PanelProps) {
+  const open = expandedId === id
+  return (
+    <div className="dossier-acc">
+      <button
+        type="button"
+        className="dossier-acc__trigger"
+        aria-expanded={open}
+        onClick={() => onSelect(id)}
+      >
+        <span className="dossier-acc__title">{title}</span>
+        <span className="dossier-acc__chevron" aria-hidden>
+          {open ? '▼' : '▶'}
+        </span>
+      </button>
+      {open ? <div className="dossier-acc__body">{children}</div> : null}
+    </div>
+  )
+}
+
 export function FacilityDossier({ open, model, onToggle }: Props) {
+  const [expandedId, setExpandedId] = useState<DossierAccordionId | null>(null)
+
+  const onSelect = useCallback((id: DossierAccordionId) => {
+    setExpandedId((cur) => (cur === id ? null : id))
+  }, [])
+
+  const projectsEmpty =
+    model.availableProjects.length === 0 &&
+    model.activeProjects.length === 0 &&
+    model.completedProjects.length === 0 &&
+    model.failedProjects.length === 0
+
   return (
     <>
       <button type="button" className="dossier-toggle" onClick={onToggle} aria-expanded={open}>
@@ -37,18 +86,13 @@ export function FacilityDossier({ open, model, onToggle }: Props) {
               <dd>{model.completedRuns}</dd>
             </div>
           </dl>
-          <section className="dossier__section">
-            <h3>Сводка текущего назначения</h3>
-            <ul>
-              {model.resourcesSummary.map((resource) => (
-                <li key={resource.key}>
-                  {resource.label}: {resource.value}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="dossier__section">
-            <h3>Открытые отделы</h3>
+
+          <DossierAccordionPanel
+            id="departments"
+            title="Открытые отделы"
+            expandedId={expandedId}
+            onSelect={onSelect}
+          >
             {model.unlockedDepartments.length === 0 ? (
               <p className="dossier__muted">Отделы ещё не расширены.</p>
             ) : (
@@ -58,65 +102,78 @@ export function FacilityDossier({ open, model, onToggle }: Props) {
                 ))}
               </ul>
             )}
-          </section>
-          <section className="dossier__section">
-            <h3>Проекты (доступные)</h3>
-            {model.availableProjects.length === 0 ? (
-              <p className="dossier__muted">Нет проектов в ожидании запуска.</p>
+          </DossierAccordionPanel>
+
+          <DossierAccordionPanel
+            id="projects"
+            title="Проекты"
+            expandedId={expandedId}
+            onSelect={onSelect}
+          >
+            {projectsEmpty ? (
+              <p className="dossier__muted">По проектам записей нет.</p>
             ) : (
-              <ul>
-                {model.availableProjects.map((project) => (
-                  <li key={project.id}>
-                    {project.label} — {project.statusLabel} ({project.progress}% / риск {project.risk}%)
-                  </li>
-                ))}
-              </ul>
+              <>
+                {model.availableProjects.length > 0 ? (
+                  <>
+                    <h4 className="dossier-acc__subhead">Доступные</h4>
+                    <ul>
+                      {model.availableProjects.map((project) => (
+                        <li key={project.id}>
+                          {project.label} — {project.statusLabel} ({project.progress}% / риск{' '}
+                          {project.risk}%)
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {model.activeProjects.length > 0 ? (
+                  <>
+                    <h4 className="dossier-acc__subhead">Активные</h4>
+                    <ul>
+                      {model.activeProjects.map((project) => (
+                        <li key={project.id}>
+                          {project.label} — {project.statusLabel} ({project.progress}% / риск{' '}
+                          {project.risk}%)
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {model.completedProjects.length > 0 ? (
+                  <>
+                    <h4 className="dossier-acc__subhead">Завершённые</h4>
+                    <ul>
+                      {model.completedProjects.map((project) => (
+                        <li key={project.id}>
+                          {project.label} — {project.statusLabel}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {model.failedProjects.length > 0 ? (
+                  <>
+                    <h4 className="dossier-acc__subhead">Проваленные</h4>
+                    <ul>
+                      {model.failedProjects.map((project) => (
+                        <li key={project.id}>
+                          {project.label} — {project.statusLabel}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </>
             )}
-          </section>
-          <section className="dossier__section">
-            <h3>Проекты (активные)</h3>
-            {model.activeProjects.length === 0 ? (
-              <p className="dossier__muted">Активных проектов пока нет.</p>
-            ) : (
-              <ul>
-                {model.activeProjects.map((project) => (
-                  <li key={project.id}>
-                    {project.label} — {project.statusLabel} ({project.progress}% / риск {project.risk}%)
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section className="dossier__section">
-            <h3>Проекты (завершённые)</h3>
-            {model.completedProjects.length === 0 ? (
-              <p className="dossier__muted">Завершённых проектов нет.</p>
-            ) : (
-              <ul>
-                {model.completedProjects.map((project) => (
-                  <li key={project.id}>
-                    {project.label} — {project.statusLabel}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section className="dossier__section">
-            <h3>Проекты (проваленные)</h3>
-            {model.failedProjects.length === 0 ? (
-              <p className="dossier__muted">Провалов по проектам не зафиксировано.</p>
-            ) : (
-              <ul>
-                {model.failedProjects.map((project) => (
-                  <li key={project.id}>
-                    {project.label} — {project.statusLabel}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section className="dossier__section">
-            <h3>Архив записей</h3>
+          </DossierAccordionPanel>
+
+          <DossierAccordionPanel
+            id="archive"
+            title="Архив записей"
+            expandedId={expandedId}
+            onSelect={onSelect}
+          >
             {model.archiveEntries.length === 0 ? (
               <p className="dossier__muted">Архив пуст.</p>
             ) : (
@@ -126,9 +183,9 @@ export function FacilityDossier({ open, model, onToggle }: Props) {
                 ))}
               </ul>
             )}
-          </section>
-          <section className="dossier__section">
-            <h3>Слухи</h3>
+          </DossierAccordionPanel>
+
+          <DossierAccordionPanel id="rumors" title="Слухи" expandedId={expandedId} onSelect={onSelect}>
             {model.rumors.length === 0 ? (
               <p className="dossier__muted">Пока тихо. Слишком тихо.</p>
             ) : (
@@ -138,9 +195,14 @@ export function FacilityDossier({ open, model, onToggle }: Props) {
                 ))}
               </ul>
             )}
-          </section>
-          <section className="dossier__section">
-            <h3>Кризисные контуры</h3>
+          </DossierAccordionPanel>
+
+          <DossierAccordionPanel
+            id="crises"
+            title="Кризисные контуры"
+            expandedId={expandedId}
+            onSelect={onSelect}
+          >
             {model.crises.length === 0 ? (
               <p className="dossier__muted">Активных кризисных меток нет.</p>
             ) : (
@@ -150,11 +212,16 @@ export function FacilityDossier({ open, model, onToggle }: Props) {
                 ))}
               </ul>
             )}
-          </section>
-          <section className="dossier__section">
-            <h3>Репутация текущего назначения</h3>
-            <p>{model.runReputation}</p>
-          </section>
+          </DossierAccordionPanel>
+
+          <DossierAccordionPanel
+            id="reputation"
+            title="Репутация текущего назначения"
+            expandedId={expandedId}
+            onSelect={onSelect}
+          >
+            <p className="dossier-acc__text">{model.runReputation}</p>
+          </DossierAccordionPanel>
         </div>
       </aside>
     </>

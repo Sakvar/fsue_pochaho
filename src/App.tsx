@@ -1,3 +1,4 @@
+import { DecisionButtons } from '@/components/DecisionButtons'
 import { DecisionCard } from '@/components/DecisionCard'
 import { EndingScreen } from '@/components/EndingScreen'
 import { FacilityDossier } from '@/components/FacilityDossier'
@@ -169,6 +170,14 @@ export default function App() {
           <>
             <div className="app-shell__center">
               <DecisionCard card={card} />
+              <DecisionButtons
+                phase={phase}
+                left={left}
+                right={right}
+                onChooseLeft={handleChooseLeft}
+                onChooseRight={handleChooseRight}
+                variant="inline"
+              />
             </div>
             <div className="app-shell__side">
               <FacilityDossier open={dossierOpen} model={dossierModel} onToggle={toggleDossier} />
@@ -177,26 +186,16 @@ export default function App() {
         )}
       </main>
 
-      <div className="decisions" role="group" aria-label="Решение">
-        <button
-          type="button"
-          className="decision-btn"
-          onClick={handleChooseLeft}
-          disabled={phase !== 'playing' || !left}
-        >
-          <span className="decision-btn__label">{left?.label ?? '—'}</span>
-          <span className="decision-btn__hint">{left?.previewHint ?? 'Нет данных'}</span>
-        </button>
-        <button
-          type="button"
-          className="decision-btn"
-          onClick={handleChooseRight}
-          disabled={phase !== 'playing' || !right}
-        >
-          <span className="decision-btn__label">{right?.label ?? '—'}</span>
-          <span className="decision-btn__hint">{right?.previewHint ?? 'Нет данных'}</span>
-        </button>
-      </div>
+      {isMobile ? (
+        <DecisionButtons
+          phase={phase}
+          left={left}
+          right={right}
+          onChooseLeft={handleChooseLeft}
+          onChooseRight={handleChooseRight}
+          variant="fixed"
+        />
+      ) : null}
 
       <StampFeedback message={stampMessage} onDone={handleClearStamp} />
 
