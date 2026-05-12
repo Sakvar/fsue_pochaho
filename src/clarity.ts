@@ -8,12 +8,12 @@ export function initClarity(): void {
   if (!projectId) return
   if (document.querySelector(`script[src*="clarity.ms/tag/${projectId}"]`)) return
 
-  const w = window as Window & Record<string, ClarityFn | undefined>
-  const name = 'clarity'
-  w[name] =
-    w[name] ||
+  type WindowWithClarity = Window & { clarity?: ClarityFn }
+  const w = window as unknown as WindowWithClarity
+  w.clarity =
+    w.clarity ||
     function clarityStub(...args: unknown[]): void {
-      const stub = w[name]!
+      const stub = w.clarity!
       stub.q = stub.q || []
       stub.q.push(args)
     }
