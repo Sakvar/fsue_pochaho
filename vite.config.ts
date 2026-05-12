@@ -20,6 +20,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      '@legal': path.resolve(__dirname, 'docs/legal'),
     },
   },
   plugins: [
@@ -58,7 +59,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,md}'],
       },
     }),
   ],

@@ -1,7 +1,12 @@
+import { trackGameStart } from '@/analytics'
+import { AboutSupportPanel } from '@/components/AboutSupportPanel'
+import { AppFooter } from '@/components/AppFooter'
 import { DecisionButtons } from '@/components/DecisionButtons'
 import { DecisionCard } from '@/components/DecisionCard'
+import { EndingsArchiveSection } from '@/components/EndingsArchiveSection'
 import { EndingScreen } from '@/components/EndingScreen'
 import { FacilityDossier } from '@/components/FacilityDossier'
+import { LegalDocModal, type LegalDocId } from '@/components/LegalDocModal'
 import { StampFeedback } from '@/components/StampFeedback'
 import { StatusBars } from '@/components/StatusBars'
 import { buildDossierView } from '@/game/dossierCopy'
@@ -9,7 +14,7 @@ import { canSelectScenario, getScenario, isScenarioUnlocked, scenarioLockHint, S
 import { selectCurrentCard, selectMeters } from '@/game/selectors'
 import { useGameStore } from '@/game/store'
 import { initTelegramMiniApp, telegramImpact } from '@/integrations/telegram'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '@/styles/app.css'
 
 function useMediaQuery(query: string): boolean {
@@ -30,7 +35,6 @@ function useMediaQuery(query: string): boolean {
       return () => mql.removeEventListener('change', onChange)
     }
 
-    // Legacy Safari fallback
     const legacy = mql as unknown as {
       addListener?: (listener: () => void) => void
       removeListener?: (listener: () => void) => void
@@ -63,6 +67,10 @@ export default function App() {
   const clearStamp = useGameStore((s) => s.clearStamp)
   const [menuOpen, setMenuOpen] = useState(false)
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(true)
+  const [archiveMenuOpen, setArchiveMenuOpen] = useState(false)
+  const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const sessionTracked = useRef(false)
 
   const scenario = useMemo(() => getScenario(meta.scenarioId), [meta.scenarioId])
   const meters = useMemo(() => selectMeters(resources), [resources])
@@ -103,6 +111,13 @@ export default function App() {
   }, [choose])
 
   useEffect(() => initTelegramMiniApp(), [])
+
+  useEffect(() => {
+    if (sessionTracked.current) return
+    sessionTracked.current = true
+    trackGameStart('app_mount', useGameStore.getState().meta.scenarioId)
+  }, [])
+
   useEffect(() => {
     if (!menuOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -199,6 +214,13 @@ export default function App() {
 
       <StampFeedback message={stampMessage} onDone={handleClearStamp} />
 
+      <AppFooter
+        onOpenLegal={(doc) => setLegalDoc(doc)}
+        onOpenAbout={() => {
+          setAboutOpen(true)
+        }}
+      />
+
       {menuOpen ? (
         <div className="menu-popup-layer" role="dialog" aria-modal="true" aria-labelledby="menu-title" onClick={handleCloseMenu}>
           <div className="menu-popup" onClick={(event) => event.stopPropagation()}>
@@ -247,12 +269,36 @@ export default function App() {
                 </ul>
               ) : null}
             </section>
+
+            <section className="menu-popup__section">
+              <button
+                type="button"
+                className="menu-popup__submenu-toggle"
+                onClick={() => setArchiveMenuOpen((value) => !value)}
+                aria-expanded={archiveMenuOpen}
+              >
+                Архив исходов
+              </button>
+              {archiveMenuOpen ? <EndingsArchiveSection archive={institute.archive} /> : null}
+            </section>
           </div>
         </div>
       ) : null}
 
+      {legalDoc ? <LegalDocModal doc={legalDoc} onClose={() => setLegalDoc(null)} /> : null}
+      {aboutOpen ? <AboutSupportPanel onClose={() => setAboutOpen(false)} /> : null}
+
       {phase === 'ended' && endingId ? (
-        <EndingScreen endingId={endingId} rewards={endingRewards} onRestart={newGame} />
+        <EndingScreen
+          endingId={endingId}
+          rewards={endingRewards}
+          onRestart={newGame}
+          shareMeta={{
+            scenarioLabel: scenario.label,
+            secrecy: resources.secrecy,
+            completedRuns: institute.completedRuns,
+          }}
+        />
       ) : null}
     </div>
   )

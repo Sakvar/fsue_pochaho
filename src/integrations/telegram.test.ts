@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { initTelegramMiniApp, telegramImpact } from '@/integrations/telegram'
+import { initTelegramMiniApp, shareOutcomeText, telegramImpact } from '@/integrations/telegram'
 
 describe('telegram mini app integration', () => {
   afterEach(() => {
@@ -72,5 +72,25 @@ describe('telegram mini app integration', () => {
     delete window.Telegram
     telegramImpact('medium')
     expect(impactOccurred).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares text via openTelegramLink in telegram runtime', () => {
+    const openTelegramLink = vi.fn()
+    window.Telegram = {
+      WebApp: {
+        initData: 'signed_payload',
+        ready: vi.fn(),
+        expand: vi.fn(),
+        openTelegramLink,
+      },
+    }
+
+    shareOutcomeText('Исход засекречен')
+
+    expect(openTelegramLink).toHaveBeenCalledTimes(1)
+    const url = new URL(openTelegramLink.mock.calls[0][0] as string)
+    expect(url.hostname).toBe('t.me')
+    expect(url.pathname).toBe('/share/url')
+    expect(url.searchParams.get('text')).toBe('Исход засекречен')
   })
 })

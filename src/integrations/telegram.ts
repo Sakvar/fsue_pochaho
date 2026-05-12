@@ -40,6 +40,8 @@ type TelegramWebApp = {
   onEvent?: (event: TelegramEvent, listener: () => void) => void
   offEvent?: (event: TelegramEvent, listener: () => void) => void
   HapticFeedback?: TelegramHapticFeedback
+  openTelegramLink?: (url: string) => void
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void
 }
 
 type TelegramNamespace = {
@@ -126,4 +128,52 @@ export function telegramImpact(style: TelegramImpactStyle = 'light'): void {
   const webApp = getTelegramWebApp()
   if (!webApp || !isTelegramMiniAppRuntime(webApp)) return
   webApp.HapticFeedback?.impactOccurred(style)
+}
+
+/** Ссылка вида https://t.me/share/url?... — в Mini App предпочтительно через openTelegramLink. */
+export function openTelegramShareUrl(pageUrl: string, text: string): void {
+  const shareUrl = `https://t.me/share/url?${new URLSearchParams({ url: pageUrl, text }).toString()}`
+  const webApp = getTelegramWebApp()
+  if (webApp && isTelegramMiniAppRuntime(webApp)) {
+    if (typeof webApp.openTelegramLink === 'function') {
+      webApp.openTelegramLink(shareUrl)
+      return
+    }
+    webApp.openLink?.(shareUrl, { try_instant_view: false })
+    return
+  }
+  if (typeof window !== 'undefined') {
+    window.open(shareUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+/** Поделиться только текстом: Mini App → Telegram, иначе Web Share API, иначе буфер обмена. */
+export function shareOutcomeText(text: string): void {
+  const shareUrl = `https://t.me/share/url?${new URLSearchParams({ text }).toString()}`
+  const webApp = getTelegramWebApp()
+  if (webApp && isTelegramMiniAppRuntime(webApp)) {
+    if (typeof webApp.openTelegramLink === 'function') {
+      webApp.openTelegramLink(shareUrl)
+      return
+    }
+    webApp.openLink?.(shareUrl, { try_instant_view: false })
+    return
+  }
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    void navigator.share({ text }).catch(() => {
+      void copyToClipboard(text)
+    })
+    return
+  }
+  void copyToClipboard(text)
+}
+
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return false
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
 }

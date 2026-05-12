@@ -920,3 +920,6 @@ export const CARD_LIST: Card[] = [
   },
   ...META_CARD_LIST,
 ]
+
+/** Число карточек в полном каталоге (основной список + мета-карточки). */
+export const CARD_CATALOG_SCENE_COUNT = CARD_LIST.length

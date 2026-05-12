@@ -1,3 +1,4 @@
+import { trackCardChoice, trackEnding, trackGameStart, trackScenarioChange } from '@/analytics'
 import type { Card } from '@/data/types'
 import { HISTORY_LIMIT, STAMP_MESSAGES } from '@/game/constants'
 import { pickNextCard } from '@/game/cardEngine'
@@ -99,6 +100,7 @@ export const useGameStore = create<GameStore>()(
         const card = state.cardsById[state.currentCardId]
         if (!card) return
         const option = choice === 'left' ? card.left : card.right
+        trackCardChoice({ cardId: card.id, side: choice })
         let next = applyEffects(state, option.effects)
         next = advanceMeta(next)
         const history = [...next.history, { cardId: card.id, choice }]
@@ -107,6 +109,7 @@ export const useGameStore = create<GameStore>()(
         const endingId = evaluateEnding(next)
         const stamp = option.stamp ?? randomStamp()
         if (endingId) {
+          trackEnding({ endingId })
           const ended = applyEndingRewards({ ...next, phase: 'ended', endingId }, endingId)
           set({ ...ended, stampMessage: stamp, cards: state.cards, cardsById: state.cardsById })
           return
@@ -115,16 +118,19 @@ export const useGameStore = create<GameStore>()(
         const nextCardId = forced ?? pickNextCard(next, state.cards, Math.random)
         set({ ...next, currentCardId: nextCardId, stampMessage: stamp, cards: state.cards, cardsById: state.cardsById })
       },
-      newGame: () =>
+      newGame: () => {
+        trackGameStart('new_run')
         set({
           ...bootstrapState(newRunId(), get().meta.scenarioId, get().institute),
           dossierOpen: get().dossierOpen,
           mobileTab: get().mobileTab,
           stampMessage: null,
-        }),
+        })
+      },
       setScenario: (scenarioId) => {
         const state = get()
         if (!canSelectScenario(scenarioId, state.institute, state.meta.scenarioId)) return
+        trackScenarioChange({ fromScenarioId: state.meta.scenarioId, toScenarioId: scenarioId })
         set({
           ...bootstrapState(newRunId(), scenarioId, state.institute),
           dossierOpen: state.dossierOpen,
