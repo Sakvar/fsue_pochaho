@@ -27,6 +27,8 @@ jobs:
       - run: npm run build
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
+          VITE_ANALYTICS_ENDPOINT: ${{ secrets.VITE_ANALYTICS_ENDPOINT }}
+          VITE_CLARITY_PROJECT_ID: ${{ secrets.VITE_CLARITY_PROJECT_ID }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
