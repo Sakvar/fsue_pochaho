@@ -6,29 +6,7 @@
     <title>ФГУП ПОЧАХО — прототип</title>
   </head>
   <body>
-    <div id="app-shell">
-      <header class="topbar">
-        <div>
-          <strong>ФГУП «ПОЧАХО»</strong>
-          <span>первый прототип производственного симулятора</span>
-        </div>
-        <div class="controls">
-          <button id="btn-order" type="button">+ заказ</button>
-          <button id="btn-break" type="button">сломать резак</button>
-          <button id="btn-speed" type="button">скорость ×1</button>
-          <button id="btn-pause" type="button">пауза</button>
-        </div>
-      </header>
-      <main>
-        <section id="game-root" aria-label="Карта предприятия"></section>
-        <aside class="hud">
-          <div id="status" class="panel"></div>
-          <div id="selection" class="panel"></div>
-          <div id="tasks" class="panel"></div>
-          <div id="log" class="panel log"></div>
-        </aside>
-      </main>
-    </div>
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
