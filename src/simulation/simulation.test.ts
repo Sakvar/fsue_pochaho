@@ -21,4 +21,25 @@ describe('factory simulation prototype', () => {
 
     expect(world.tasks.some((task) => task.type === 'repair-machine')).toBe(true);
   });
+
+  it('routes assembled products through quality control', () => {
+    const world = createInitialWorld();
+    world.inventory.assembledAtBench = 1;
+    tickSimulation(world, 0.25);
+
+    expect(world.tasks.some((task) => task.type === 'inspect-product')).toBe(true);
+  });
+
+  it('sends every fourth inspected product back to rework', () => {
+    const world = createInitialWorld();
+    world.inventory.assembledAtBench = 1;
+    world.qualityChecks = 3;
+
+    for (let i = 0; i < 200; i += 1) {
+      tickSimulation(world, 0.25);
+    }
+
+    expect(world.qualityChecks).toBeGreaterThan(3);
+    expect(world.tasks.some((task) => task.type === 'rework-product')).toBe(true);
+  });
 });

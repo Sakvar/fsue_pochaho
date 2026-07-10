@@ -1,6 +1,6 @@
-import { TASK_LABELS } from '../content/catalog';
+import { PRODUCTION_TASKS, type TaskRule } from '../content/productionRules';
 import { findPath, samePosition } from './pathfinding';
-import type { Employee, Machine, Position, Skill, Task, TaskType, WorldState } from './types';
+import type { Employee, Machine, Task, TaskType, WorldState } from './types';
 
 const MOVE_STEP_SECONDS = 0.18;
 const DAY_MINUTES = 24 * 60;
@@ -50,59 +50,26 @@ function updateMachineFlags(world: WorldState): void {
 }
 
 function enqueueNeededTasks(world: WorldState): void {
-  const cutter = getMachine(world, 'cutter');
-
-  if (!cutter.operational) {
-    ensureTask(world, 'repair-machine', cutter.position, undefined, 'mechanics', 12, 100);
-    return;
-  }
-
-  if (world.order.completedProducts >= world.order.targetProducts) {
-    return;
-  }
-
-  if (world.inventory.steelSheet > 0 && world.inventory.steelAtCutter < 1) {
-    ensureTask(world, 'haul-steel', world.facilities.steelStockpile, world.facilities.cutter, 'logistics', 2.5, 50);
-  }
-
-  if (world.inventory.steelAtCutter > 0) {
-    ensureTask(world, 'cut-steel', world.facilities.cutter, undefined, 'machining', 8, 60);
-  }
-
-  if (world.inventory.cutBlank > 0 && world.inventory.blankAtBench < 1) {
-    ensureTask(world, 'haul-blank', world.facilities.cutter, world.facilities.bench, 'logistics', 2.5, 45);
-  }
-
-  if (world.inventory.blankAtBench > 0) {
-    ensureTask(world, 'assemble-product', world.facilities.bench, undefined, 'assembly', 10, 55);
-  }
-
-  if (world.inventory.assembledAtBench > 0) {
-    ensureTask(world, 'deliver-product', world.facilities.bench, world.facilities.finishedStockpile, 'logistics', 2, 65);
+  for (const rule of PRODUCTION_TASKS) {
+    if (rule.canStart(world)) {
+      ensureTask(world, rule);
+    }
   }
 }
 
-function ensureTask(
-  world: WorldState,
-  type: TaskType,
-  source: Position,
-  destination: Position | undefined,
-  requiredSkill: Skill | undefined,
-  duration: number,
-  priority: number,
-): void {
-  const alreadyOpen = world.tasks.some((task) => task.type === type && !['completed', 'failed'].includes(task.state));
+function ensureTask(world: WorldState, rule: TaskRule): void {
+  const alreadyOpen = world.tasks.some((task) => task.type === rule.type && !['completed', 'failed'].includes(task.state));
   if (alreadyOpen) return;
 
   world.tasks.push({
     id: `task-${world.nextTaskId}`,
-    type,
-    title: TASK_LABELS[type],
-    source,
-    destination,
-    requiredSkill,
-    duration,
-    priority,
+    type: rule.type,
+    title: rule.title,
+    source: world.facilities[rule.source],
+    destination: rule.destination ? world.facilities[rule.destination] : undefined,
+    requiredSkill: rule.requiredSkill,
+    duration: rule.duration,
+    priority: rule.priority,
     state: 'queued',
   });
   world.nextTaskId += 1;
@@ -230,41 +197,18 @@ function startWork(employee: Employee, task: Task): void {
 }
 
 function completeTask(world: WorldState, employee: Employee, task: Task): void {
-  switch (task.type) {
-    case 'haul-steel':
-      world.inventory.steelSheet -= 1;
-      world.inventory.steelAtCutter += 1;
-      break;
-    case 'cut-steel': {
-      const cutter = getMachine(world, 'cutter');
-      world.inventory.steelAtCutter -= 1;
-      world.inventory.cutBlank += 1;
-      cutter.condition = Math.max(0, cutter.condition - 9);
-      break;
-    }
-    case 'haul-blank':
-      world.inventory.cutBlank -= 1;
-      world.inventory.blankAtBench += 1;
-      break;
-    case 'assemble-product':
-      world.inventory.blankAtBench -= 1;
-      world.inventory.assembledAtBench += 1;
-      break;
-    case 'deliver-product':
-      world.inventory.assembledAtBench -= 1;
-      world.inventory.product += 1;
-      world.order.completedProducts += 1;
-      break;
-    case 'repair-machine': {
-      const cutter = getMachine(world, 'cutter');
-      cutter.condition = Math.min(100, cutter.condition + 65);
-      cutter.operational = true;
-      break;
-    }
+  const rule = PRODUCTION_TASKS.find((item) => item.type === task.type);
+  if (!rule) {
+    task.state = 'failed';
+    addLog(world, `${task.title}: нет производственного правила.`);
+    releaseEmployee(employee);
+    return;
   }
 
+  const resultMessage = rule.complete(world);
   task.state = 'completed';
   addLog(world, `${employee.name}: ${task.title.toLowerCase()}.`);
+  if (resultMessage) addLog(world, resultMessage);
   releaseEmployee(employee);
 }
 

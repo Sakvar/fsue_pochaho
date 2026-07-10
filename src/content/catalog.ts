@@ -1,13 +1,4 @@
-import type { Machine, TaskType } from '../simulation/types';
-
-export const TASK_LABELS: Record<TaskType, string> = {
-  'haul-steel': 'Принести листовой металл',
-  'cut-steel': 'Нарезать заготовку',
-  'haul-blank': 'Передать заготовку в сборку',
-  'assemble-product': 'Собрать корпус',
-  'deliver-product': 'Сдать корпус на склад',
-  'repair-machine': 'Ремонт станка',
-};
+import type { Machine } from '../simulation/types';
 
 export const MACHINE_LABELS: Record<Machine['kind'], string> = {
   cutter: 'станок резки',

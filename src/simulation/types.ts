@@ -1,11 +1,13 @@
 export type TileKind = 'floor' | 'wall';
-export type Skill = 'logistics' | 'machining' | 'assembly' | 'mechanics';
+export type Skill = 'logistics' | 'machining' | 'assembly' | 'mechanics' | 'quality';
 
 export type TaskType =
   | 'haul-steel'
   | 'cut-steel'
   | 'haul-blank'
   | 'assemble-product'
+  | 'inspect-product'
+  | 'rework-product'
   | 'deliver-product'
   | 'repair-machine';
 
@@ -26,6 +28,7 @@ export interface FacilityPositions {
   steelStockpile: Position;
   cutter: Position;
   bench: Position;
+  qualityDesk: Position;
   finishedStockpile: Position;
 }
 
@@ -60,6 +63,8 @@ export interface Inventory {
   cutBlank: number;
   blankAtBench: number;
   assembledAtBench: number;
+  inspectedProduct: number;
+  defectiveProduct: number;
   product: number;
 }
 
@@ -92,6 +97,7 @@ export interface WorldState {
   tasks: Task[];
   inventory: Inventory;
   order: ProductionOrder;
+  qualityChecks: number;
   timeMinutes: number;
   speed: number;
   paused: boolean;

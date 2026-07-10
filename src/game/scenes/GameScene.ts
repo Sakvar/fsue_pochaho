@@ -100,6 +100,7 @@ export class GameScene extends Phaser.Scene {
 
   private drawFacilities(g: Phaser.GameObjects.Graphics): void {
     this.drawMarker(g, this.world.facilities.steelStockpile, 0x7ab56d, 'S');
+    this.drawMarker(g, this.world.facilities.qualityDesk, 0xb48be8, 'Q');
     this.drawMarker(g, this.world.facilities.finishedStockpile, 0xf2d16b, 'G');
   }
 
@@ -166,7 +167,7 @@ export class GameScene extends Phaser.Scene {
       status.innerHTML = `
         <b>День ${currentDay(this.world)}, ${currentClock(this.world)}</b><br />
         Заказ: ${this.world.order.completedProducts}/${this.world.order.targetProducts} корпусов<br />
-        Листы: ${this.world.inventory.steelSheet} · заготовки: ${this.world.inventory.cutBlank + this.world.inventory.blankAtBench} · готово на складе: ${this.world.inventory.product}<br />
+        Листы: ${this.world.inventory.steelSheet} · заготовки: ${this.world.inventory.cutBlank + this.world.inventory.blankAtBench} · ОТК: ${this.world.inventory.inspectedProduct} · брак: ${this.world.inventory.defectiveProduct} · склад: ${this.world.inventory.product}<br />
         Станок Р-17: ${Math.round(cutter?.condition ?? 0)}%
       `;
     }
