@@ -11,7 +11,7 @@ export type TaskType =
   | 'deliver-product'
   | 'repair-machine';
 
-export type TaskState = 'queued' | 'assigned' | 'moving' | 'working' | 'completed' | 'failed';
+export type TaskState = 'queued' | 'blocked' | 'assigned' | 'moving' | 'working' | 'completed' | 'failed';
 export type EmployeeStatus = 'idle' | 'moving' | 'working';
 
 export interface Position {
@@ -72,6 +72,7 @@ export interface ProductionOrder {
   targetProducts: number;
   completedProducts: number;
   dueDay: number;
+  status: 'active' | 'completed' | 'failed';
 }
 
 export interface Task {
@@ -85,6 +86,12 @@ export interface Task {
   priority: number;
   state: TaskState;
   assignedEmployeeId?: string;
+  blockedReason?: string;
+}
+
+export interface ProductionIssue {
+  code: 'materials' | 'specialist' | 'route' | 'machine' | 'deadline';
+  message: string;
 }
 
 export interface WorldState {

@@ -150,6 +150,7 @@ export function createInitialWorld(): WorldState {
       targetProducts: 3,
       completedProducts: 0,
       dueDay: 30,
+      status: 'active',
     },
     qualityChecks: 0,
     timeMinutes: 8 * 60,

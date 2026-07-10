@@ -1,6 +1,6 @@
 import { PRODUCTION_TASKS, type TaskRule } from '../content/productionRules';
 import { findPath, samePosition } from './pathfinding';
-import type { Employee, Machine, Task, TaskType, WorldState } from './types';
+import type { Employee, Machine, ProductionIssue, Task, WorldState } from './types';
 
 const MOVE_STEP_SECONDS = 0.18;
 const DAY_MINUTES = 24 * 60;
@@ -23,6 +23,7 @@ export function tickSimulation(world: WorldState, deltaSeconds: number): void {
   world.timeMinutes += scaledDelta * 8;
 
   updateMachineFlags(world);
+  updateOrderStatus(world);
   enqueueNeededTasks(world);
   assignTasks(world);
 
@@ -31,9 +32,22 @@ export function tickSimulation(world: WorldState, deltaSeconds: number): void {
   }
 }
 
-export function addProductionOrder(world: WorldState, amount: number): void {
+export function addProductionOrder(world: WorldState, amount: number): boolean {
+  if (world.order.status !== 'active') {
+    addLog(world, 'Изменить закрытый заказ нельзя: требуется оформить новый.');
+    return false;
+  }
+
+  const availableUnits = countPotentialProducts(world);
+  const newTarget = world.order.targetProducts + amount;
+  if (newTarget - world.order.completedProducts > availableUnits) {
+    addLog(world, `План не увеличен: для ${newTarget} корпусов не хватает листовой стали.`);
+    return false;
+  }
+
   world.order.targetProducts += amount;
   addLog(world, `Директор добавил заказ ещё на ${amount} корпуса.`);
+  return true;
 }
 
 export function damageCutter(world: WorldState): void {
@@ -45,7 +59,29 @@ export function damageCutter(world: WorldState): void {
 
 function updateMachineFlags(world: WorldState): void {
   for (const machine of world.machines) {
+    const wasOperational = machine.operational;
     machine.operational = machine.condition > 20;
+    if (wasOperational && !machine.operational) {
+      addLog(world, `${machine.name} остановлен из-за критического износа.`);
+    }
+  }
+}
+
+function updateOrderStatus(world: WorldState): void {
+  if (world.order.status !== 'active') return;
+
+  if (world.order.completedProducts >= world.order.targetProducts) {
+    world.order.status = 'completed';
+    addLog(world, `Заказ выполнен: сдано ${world.order.completedProducts} корпусов.`);
+  } else if (currentDay(world) > world.order.dueDay) {
+    world.order.status = 'failed';
+    addLog(world, `Срок заказа сорван: сдано ${world.order.completedProducts} из ${world.order.targetProducts}.`);
+    for (const task of world.tasks.filter((item) => !['completed', 'failed'].includes(item.state))) {
+      task.state = 'failed';
+      task.blockedReason = 'Заказ закрыт после срыва срока';
+      const employee = world.employees.find((item) => item.id === task.assignedEmployeeId);
+      if (employee) releaseEmployee(employee);
+    }
   }
 }
 
@@ -77,21 +113,37 @@ function ensureTask(world: WorldState, rule: TaskRule): void {
 
 function assignTasks(world: WorldState): void {
   const openTasks = world.tasks
-    .filter((task) => task.state === 'queued')
+    .filter((task) => task.state === 'queued' || task.state === 'blocked')
     .sort((a, b) => b.priority - a.priority);
 
   for (const task of openTasks) {
+    task.blockedReason = undefined;
+    const equipmentBlock = getEquipmentBlock(world, task);
+    if (equipmentBlock) {
+      blockTask(task, equipmentBlock);
+      continue;
+    }
+
     const employee = findBestEmployee(world, task);
-    if (!employee) continue;
+    if (!employee) {
+      const hasQualifiedEmployee = world.employees.some((item) => !task.requiredSkill || (item.skills[task.requiredSkill] ?? 0) > 0);
+      if (hasQualifiedEmployee) {
+        task.state = 'queued';
+        task.blockedReason = 'Ожидает свободного специалиста';
+      } else {
+        blockTask(task, 'Нет сотрудника с требуемым навыком');
+      }
+      continue;
+    }
 
     const path = findPath(world, employee.position, task.source);
     if (!samePosition(employee.position, task.source) && path.length === 0) {
-      task.state = 'failed';
-      addLog(world, `${task.title}: проход не найден.`);
+      blockTask(task, 'Нет прохода к месту выполнения');
       continue;
     }
 
     task.state = 'assigned';
+    task.blockedReason = undefined;
     task.assignedEmployeeId = employee.id;
     employee.currentTaskId = task.id;
     employee.taskPhase = 'to-source';
@@ -131,6 +183,13 @@ function updateEmployee(world: WorldState, employee: Employee, scaledDelta: numb
 
   const task = world.tasks.find((item) => item.id === employee.currentTaskId);
   if (!task || task.state === 'completed' || task.state === 'failed') {
+    releaseEmployee(employee);
+    return;
+  }
+
+  const equipmentBlock = getEquipmentBlock(world, task);
+  if (equipmentBlock) {
+    blockTask(task, equipmentBlock);
     releaseEmployee(employee);
     return;
   }
@@ -218,6 +277,50 @@ function releaseEmployee(employee: Employee): void {
   employee.path = [];
   employee.status = 'idle';
   employee.workRemaining = 0;
+}
+
+function blockTask(task: Task, reason: string): void {
+  task.state = 'blocked';
+  task.assignedEmployeeId = undefined;
+  task.blockedReason = reason;
+}
+
+function getEquipmentBlock(world: WorldState, task: Task): string | undefined {
+  if (task.type !== 'cut-steel') return undefined;
+  const cutter = getMachine(world, 'cutter');
+  return cutter.operational ? undefined : `${cutter.name} неисправен`;
+}
+
+function countPotentialProducts(world: WorldState): number {
+  const inventory = world.inventory;
+  return inventory.steelSheet + inventory.steelAtCutter + inventory.cutBlank + inventory.blankAtBench +
+    inventory.assembledAtBench + inventory.inspectedProduct + inventory.defectiveProduct;
+}
+
+export function getProductionIssues(world: WorldState): ProductionIssue[] {
+  if (world.order.status === 'completed') return [];
+  if (world.order.status === 'failed') return [{ code: 'deadline', message: 'Срок заказа сорван' }];
+
+  const issues: ProductionIssue[] = [];
+  const remaining = world.order.targetProducts - world.order.completedProducts;
+  const missingMaterials = Math.max(0, remaining - countPotentialProducts(world));
+  if (missingMaterials > 0) {
+    issues.push({ code: 'materials', message: `Не хватает листовой стали: минимум ${missingMaterials} шт.` });
+  }
+
+  const cutter = getMachine(world, 'cutter');
+  if (!cutter.operational) {
+    issues.push({ code: 'machine', message: `${cutter.name} неисправен` });
+  }
+
+  for (const task of world.tasks.filter((item) => item.state === 'blocked')) {
+    if (task.blockedReason?.includes('неисправен')) continue;
+    const code = task.blockedReason?.includes('проход') ? 'route' : 'specialist';
+    if (!issues.some((issue) => issue.code === code)) {
+      issues.push({ code, message: `${task.title}: ${task.blockedReason ?? 'работа заблокирована'}` });
+    }
+  }
+  return issues;
 }
 
 function getMachine(world: WorldState, kind: Machine['kind']): Machine {

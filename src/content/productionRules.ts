@@ -28,7 +28,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'mechanics',
     duration: 12,
     priority: 100,
-    canStart: (world) => !world.machines.some((machine) => machine.kind === 'cutter' && machine.operational),
+    canStart: (world) => world.order.status === 'active' && !world.machines.some((machine) => machine.kind === 'cutter' && machine.operational),
     complete: (world) => {
       const cutter = world.machines.find((machine) => machine.kind === 'cutter');
       if (!cutter) return undefined;
@@ -45,7 +45,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'logistics',
     duration: 2,
     priority: 65,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.inspectedProduct > 0,
+    canStart: (world) => world.order.status === 'active' && world.order.completedProducts < world.order.targetProducts && world.inventory.inspectedProduct > 0,
     complete: (world) => {
       world.inventory.inspectedProduct -= 1;
       world.inventory.product += 1;
@@ -60,7 +60,11 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'machining',
     duration: 8,
     priority: 60,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.steelAtCutter > 0,
+    canStart: (world) =>
+      world.order.status === 'active' &&
+      world.order.completedProducts < world.order.targetProducts &&
+      world.inventory.steelAtCutter > 0 &&
+      world.machines.some((machine) => machine.kind === 'cutter' && machine.operational),
     complete: (world) => {
       const cutter = world.machines.find((machine) => machine.kind === 'cutter');
       world.inventory.steelAtCutter -= 1;
@@ -76,7 +80,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'assembly',
     duration: 10,
     priority: 55,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.blankAtBench > 0,
+    canStart: (world) => world.order.status === 'active' && world.order.completedProducts < world.order.targetProducts && world.inventory.blankAtBench > 0,
     complete: (world) => moveInventory(world, 'blankAtBench', 'assembledAtBench'),
   },
   {
@@ -87,7 +91,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'quality',
     duration: 6,
     priority: 52,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.assembledAtBench > 0,
+    canStart: (world) => world.order.status === 'active' && world.order.completedProducts < world.order.targetProducts && world.inventory.assembledAtBench > 0,
     complete: (world) => {
       world.inventory.assembledAtBench -= 1;
       world.qualityChecks += 1;
@@ -110,6 +114,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     duration: 2.5,
     priority: 50,
     canStart: (world) =>
+      world.order.status === 'active' &&
       world.order.completedProducts < world.order.targetProducts &&
       world.inventory.steelSheet > 0 &&
       world.inventory.steelAtCutter < 1,
@@ -123,7 +128,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'logistics',
     duration: 2.5,
     priority: 45,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.cutBlank > 0 && world.inventory.blankAtBench < 1,
+    canStart: (world) => world.order.status === 'active' && world.order.completedProducts < world.order.targetProducts && world.inventory.cutBlank > 0 && world.inventory.blankAtBench < 1,
     complete: (world) => moveInventory(world, 'cutBlank', 'blankAtBench'),
   },
   {
@@ -134,7 +139,7 @@ export const PRODUCTION_TASKS: TaskRule[] = [
     requiredSkill: 'assembly',
     duration: 8,
     priority: 58,
-    canStart: (world) => world.order.completedProducts < world.order.targetProducts && world.inventory.defectiveProduct > 0,
+    canStart: (world) => world.order.status === 'active' && world.order.completedProducts < world.order.targetProducts && world.inventory.defectiveProduct > 0,
     complete: (world) => {
       world.inventory.defectiveProduct -= 1;
       world.inventory.assembledAtBench += 1;
