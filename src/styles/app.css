@@ -1071,6 +1071,8 @@
   font-size: 0.72rem;
   letter-spacing: 0.02em;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ending-screen__restart {

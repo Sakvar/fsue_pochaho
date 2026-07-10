@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { buildEndingShareBlurb } from '@/game/endingShare'
 import { getEndingCopy } from '@/game/endings'
 import { DEPARTMENT_LABELS, PROJECT_LABELS } from '@/game/instituteCatalog'
-import { copyToClipboard, openTelegramShareUrl } from '@/integrations/telegram'
+import { copyToClipboard, getShareablePageUrl, openTelegramShareUrl } from '@/integrations/telegram'
 import type { EndingRewardsSummary } from '@/game/types'
 
 type ShareMeta = {
@@ -25,7 +25,7 @@ export function EndingScreen({ endingId, rewards, onRestart, shareMeta }: Props)
   const kind = ending?.kind ?? 'failure'
   const [copyHint, setCopyHint] = useState<string | null>(null)
 
-  const pageUrl = useMemo(() => (typeof window !== 'undefined' ? window.location.href : ''), [])
+  const pageUrl = useMemo(() => getShareablePageUrl(), [])
   const shareBlurb = useMemo(
     () =>
       buildEndingShareBlurb({

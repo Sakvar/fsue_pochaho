@@ -130,6 +130,16 @@ export function telegramImpact(style: TelegramImpactStyle = 'light'): void {
   webApp.HapticFeedback?.impactOccurred(style)
 }
 
+/**
+ * Возвращает «чистый» адрес страницы без служебных параметров Telegram Mini App
+ * (tgWebAppData, tgWebAppThemeParams и т.п.), чтобы не утекали в служебные выписки.
+ */
+export function getShareablePageUrl(): string {
+  if (typeof window === 'undefined') return ''
+  const { origin, pathname } = window.location
+  return `${origin}${pathname}`
+}
+
 /** Ссылка вида https://t.me/share/url?... — в Mini App предпочтительно через openTelegramLink. */
 export function openTelegramShareUrl(pageUrl: string, text: string): void {
   const shareUrl = `https://t.me/share/url?${new URLSearchParams({ url: pageUrl, text }).toString()}`
