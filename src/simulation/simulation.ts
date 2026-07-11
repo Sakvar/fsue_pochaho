@@ -1,6 +1,24 @@
 import { PRODUCTION_TASKS, type TaskRule } from '../content/productionRules';
 import { findPath, samePosition } from './pathfinding';
+import {
+  applyActivityFatigue,
+  computeWorkSpeed,
+  currentShiftPeriod,
+  employeeBlockReason,
+  grantSkillXp,
+  scoreEmployeeForTask,
+  updatePeopleSystems,
+} from './people';
 import type { Employee, Machine, ProductionIssue, Task, WorldState } from './types';
+
+export {
+  assignEmployeeToPost,
+  currentShiftPeriod,
+  isOnShift,
+  makeSick,
+  sendEmployeeToRest,
+  setEmployeeShift,
+} from './people';
 
 const MOVE_STEP_SECONDS = 0.18;
 const DAY_MINUTES = 24 * 60;
@@ -16,6 +34,10 @@ export function currentClock(world: WorldState): string {
   return `${hours}:${rest}`;
 }
 
+export function effectivePriority(task: Task): number {
+  return task.priority + task.priorityBoost;
+}
+
 export function tickSimulation(world: WorldState, deltaSeconds: number): void {
   if (world.paused) return;
 
@@ -24,6 +46,7 @@ export function tickSimulation(world: WorldState, deltaSeconds: number): void {
 
   updateMachineFlags(world);
   updateOrderStatus(world);
+  updatePeopleSystems(world, scaledDelta);
   enqueueNeededTasks(world);
   assignTasks(world);
 
@@ -55,6 +78,46 @@ export function damageCutter(world: WorldState): void {
   cutter.condition = 0;
   cutter.operational = false;
   addLog(world, 'Станок Р-17 остановлен: характерный запах перегретого наследия.');
+}
+
+export function boostTaskPriority(world: WorldState, taskId: string, delta = 20): boolean {
+  const task = world.tasks.find((item) => item.id === taskId);
+  if (!task || ['completed', 'failed'].includes(task.state)) return false;
+
+  task.priorityBoost = Math.max(-80, Math.min(120, task.priorityBoost + delta));
+  addLog(world, `Приоритет «${task.title}» изменён директором (${effectivePriority(task)}).`);
+  return true;
+}
+
+export function cancelTask(world: WorldState, taskId: string): boolean {
+  const task = world.tasks.find((item) => item.id === taskId);
+  if (!task || ['completed', 'failed'].includes(task.state)) return false;
+
+  const employee = world.employees.find((item) => item.id === task.assignedEmployeeId);
+  if (employee) releaseEmployee(employee);
+
+  task.state = 'failed';
+  task.assignedEmployeeId = undefined;
+  task.blockedReason = 'Отменено директором';
+  addLog(world, `Наряд «${task.title}» отменён директором.`);
+  return true;
+}
+
+export function replanBlockedWork(world: WorldState): number {
+  let count = 0;
+  for (const task of world.tasks) {
+    if (task.state !== 'blocked') continue;
+    task.state = 'queued';
+    task.blockedReason = undefined;
+    count += 1;
+  }
+
+  if (count > 0) {
+    addLog(world, `Директор потребовал перепланировать ${count} заблокированных нарядов.`);
+  } else {
+    addLog(world, 'Перепланировать нечего: заблокированных нарядов нет.');
+  }
+  return count;
 }
 
 function updateMachineFlags(world: WorldState): void {
@@ -106,6 +169,7 @@ function ensureTask(world: WorldState, rule: TaskRule): void {
     requiredSkill: rule.requiredSkill,
     duration: rule.duration,
     priority: rule.priority,
+    priorityBoost: 0,
     state: 'queued',
   });
   world.nextTaskId += 1;
@@ -114,7 +178,7 @@ function ensureTask(world: WorldState, rule: TaskRule): void {
 function assignTasks(world: WorldState): void {
   const openTasks = world.tasks
     .filter((task) => task.state === 'queued' || task.state === 'blocked')
-    .sort((a, b) => b.priority - a.priority);
+    .sort((a, b) => effectivePriority(b) - effectivePriority(a));
 
   for (const task of openTasks) {
     task.blockedReason = undefined;
@@ -126,12 +190,13 @@ function assignTasks(world: WorldState): void {
 
     const employee = findBestEmployee(world, task);
     if (!employee) {
-      const hasQualifiedEmployee = world.employees.some((item) => !task.requiredSkill || (item.skills[task.requiredSkill] ?? 0) > 0);
-      if (hasQualifiedEmployee) {
-        task.state = 'queued';
-        task.blockedReason = 'Ожидает свободного специалиста';
-      } else {
+      const qualified = world.employees.filter((item) => !task.requiredSkill || (item.skills[task.requiredSkill] ?? 0) > 0);
+      if (qualified.length === 0) {
         blockTask(task, 'Нет сотрудника с требуемым навыком');
+      } else {
+        const reason = qualified.map((item) => employeeBlockReason(item, world)).find((item) => item && item !== 'Занят');
+        task.state = 'queued';
+        task.blockedReason = reason ?? 'Ожидает свободного специалиста';
       }
       continue;
     }
@@ -146,6 +211,7 @@ function assignTasks(world: WorldState): void {
     task.blockedReason = undefined;
     task.assignedEmployeeId = employee.id;
     employee.currentTaskId = task.id;
+    employee.availability = 'available';
     employee.taskPhase = 'to-source';
     employee.path = path;
     employee.status = path.length > 0 ? 'moving' : 'working';
@@ -157,14 +223,12 @@ function findBestEmployee(world: WorldState, task: Task): Employee | undefined {
   let bestScore = Number.NEGATIVE_INFINITY;
 
   for (const employee of world.employees) {
-    if (employee.currentTaskId || employee.energy <= 5) continue;
+    if (employeeBlockReason(employee, world)) continue;
 
     const skill = task.requiredSkill ? employee.skills[task.requiredSkill] ?? 0 : 1;
     if (task.requiredSkill && skill <= 0) continue;
 
-    const distance = Math.abs(employee.position.x - task.source.x) + Math.abs(employee.position.y - task.source.y);
-    const score = skill * 10 + employee.energy * 0.05 - distance;
-
+    const score = scoreEmployeeForTask(employee, task, world);
     if (score > bestScore) {
       best = employee;
       bestScore = score;
@@ -176,8 +240,6 @@ function findBestEmployee(world: WorldState, task: Task): Employee | undefined {
 
 function updateEmployee(world: WorldState, employee: Employee, scaledDelta: number): void {
   if (!employee.currentTaskId) {
-    employee.status = 'idle';
-    employee.energy = Math.min(100, employee.energy + scaledDelta * 0.04);
     return;
   }
 
@@ -229,7 +291,7 @@ function updateEmployee(world: WorldState, employee: Employee, scaledDelta: numb
   if (employee.taskPhase === 'work') {
     task.state = 'working';
     employee.status = 'working';
-    employee.energy = Math.max(0, employee.energy - scaledDelta * 0.08);
+    applyActivityFatigue(employee, 'working', scaledDelta);
     employee.workRemaining -= scaledDelta;
 
     if (employee.workRemaining <= 0) {
@@ -241,7 +303,7 @@ function updateEmployee(world: WorldState, employee: Employee, scaledDelta: numb
 function moveEmployee(world: WorldState, employee: Employee, scaledDelta: number): void {
   employee.status = 'moving';
   employee.moveProgress += scaledDelta;
-  employee.energy = Math.max(0, employee.energy - scaledDelta * 0.03);
+  applyActivityFatigue(employee, 'moving', scaledDelta);
 
   while (employee.moveProgress >= MOVE_STEP_SECONDS && employee.path.length > 0) {
     employee.position = employee.path.shift()!;
@@ -252,7 +314,7 @@ function moveEmployee(world: WorldState, employee: Employee, scaledDelta: number
 function startWork(employee: Employee, task: Task): void {
   employee.taskPhase = 'work';
   employee.status = 'working';
-  employee.workRemaining = task.duration;
+  employee.workRemaining = task.duration / computeWorkSpeed(employee, task);
 }
 
 function completeTask(world: WorldState, employee: Employee, task: Task): void {
@@ -266,6 +328,8 @@ function completeTask(world: WorldState, employee: Employee, task: Task): void {
 
   const resultMessage = rule.complete(world);
   task.state = 'completed';
+  grantSkillXp(world, employee, task.requiredSkill, Math.max(8, Math.round(task.duration * 4)));
+  employee.morale = Math.min(100, employee.morale + 1.5);
   addLog(world, `${employee.name}: ${task.title.toLowerCase()}.`);
   if (resultMessage) addLog(world, resultMessage);
   releaseEmployee(employee);
@@ -313,11 +377,27 @@ export function getProductionIssues(world: WorldState): ProductionIssue[] {
     issues.push({ code: 'machine', message: `${cutter.name} неисправен` });
   }
 
-  for (const task of world.tasks.filter((item) => item.state === 'blocked')) {
+  const resting = world.employees.filter((item) => item.availability === 'resting').length;
+  const sick = world.employees.filter((item) => item.availability === 'sick' || item.availability === 'absent').length;
+  const offShift = world.employees.filter((item) => employeeBlockReason(item, world) === 'Вне смены').length;
+  if (sick > 0) issues.push({ code: 'absence', message: `На больничном / отсутствует: ${sick}` });
+  if (resting > 0 && world.tasks.some((task) => task.state === 'queued' || task.state === 'blocked')) {
+    issues.push({ code: 'fatigue', message: `Отдыхают и не берут наряды: ${resting}` });
+  }
+  if (offShift > 0 && currentShiftPeriod(world) === 'night') {
+    issues.push({ code: 'shift', message: `Ночная смена: дневной персонал вне работы (${offShift})` });
+  }
+
+  for (const task of world.tasks.filter((item) => item.state === 'blocked' || (item.state === 'queued' && item.blockedReason))) {
     if (task.blockedReason?.includes('неисправен')) continue;
-    const code = task.blockedReason?.includes('проход') ? 'route' : 'specialist';
-    if (!issues.some((issue) => issue.code === code)) {
-      issues.push({ code, message: `${task.title}: ${task.blockedReason ?? 'работа заблокирована'}` });
+    const reason = task.blockedReason ?? '';
+    let code: ProductionIssue['code'] = 'specialist';
+    if (reason.includes('проход')) code = 'route';
+    else if (reason.includes('смен')) code = 'shift';
+    else if (reason.includes('больнич') || reason.includes('Отсутствует')) code = 'absence';
+    else if (reason.includes('отдых') || reason.includes('сил') || reason.includes('предел')) code = 'fatigue';
+    if (!issues.some((issue) => issue.code === code && issue.message.includes(task.title))) {
+      issues.push({ code, message: `${task.title}: ${reason || 'работа заблокирована'}` });
     }
   }
   return issues;

@@ -1,3 +1,4 @@
+import { roomForPosition } from './mapEditing';
 import type { Employee, Machine, Tile, WorldState } from './types';
 
 function createTiles(width: number, height: number): Tile[] {
@@ -6,21 +7,44 @@ function createTiles(width: number, height: number): Tile[] {
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const isOuterWall = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-      const isVerticalWall = x === 10 && y !== 9 && y !== 10;
-      const isHorizontalWall = y === 6 && x > 10 && x < width - 1 && x !== 18;
+      const isVerticalDoor = x === 10 && (y === 9 || y === 10);
+      const isHorizontalDoor = y === 6 && x === 18;
+      const isVerticalWall = x === 10 && !isVerticalDoor;
+      const isHorizontalWall = y === 6 && x > 10 && x < width - 1 && !isHorizontalDoor;
       const isWall = isOuterWall || isVerticalWall || isHorizontalWall;
 
-      let room: Tile['room'] = 'corridor';
-      if (x < 10) room = 'warehouse';
-      if (x > 10 && y < 6) room = 'admin';
-      if (x > 10 && y >= 6 && x < 20) room = 'cutting';
-      if (x >= 20 && y >= 6) room = 'assembly';
+      let kind: Tile['kind'] = 'floor';
+      let doorOpen: boolean | undefined;
+      if (isWall) kind = 'wall';
+      else if (isVerticalDoor || isHorizontalDoor) {
+        kind = 'door';
+        doorOpen = true;
+      }
 
-      tiles.push({ kind: isWall ? 'wall' : 'floor', room });
+      tiles.push({
+        kind,
+        room: roomForPosition({ x, y }),
+        zone: 'none',
+        doorOpen,
+      });
     }
   }
 
   return tiles;
+}
+
+function employee(partial: Omit<Employee, 'skillXp' | 'stress' | 'health' | 'availability' | 'status' | 'path' | 'moveProgress' | 'workRemaining'> & Partial<Employee>): Employee {
+  return {
+    skillXp: {},
+    stress: 18,
+    health: 100,
+    availability: 'available',
+    status: 'idle',
+    path: [],
+    moveProgress: 0,
+    workRemaining: 0,
+    ...partial,
+  };
 }
 
 export function createInitialWorld(): WorldState {
@@ -28,7 +52,7 @@ export function createInitialWorld(): WorldState {
   const height = 20;
 
   const employees: Employee[] = [
-    {
+    employee({
       id: 'emp-boris',
       name: 'Борис',
       role: 'кладовщик',
@@ -36,12 +60,12 @@ export function createInitialWorld(): WorldState {
       skills: { logistics: 4 },
       energy: 92,
       morale: 62,
-      status: 'idle',
-      path: [],
-      moveProgress: 0,
-      workRemaining: 0,
-    },
-    {
+      stress: 22,
+      shiftId: 'day',
+      traits: ['tireless'],
+      assignedPost: 'logistics',
+    }),
+    employee({
       id: 'emp-nina',
       name: 'Нина',
       role: 'станочник',
@@ -49,12 +73,12 @@ export function createInitialWorld(): WorldState {
       skills: { machining: 5, logistics: 1 },
       energy: 88,
       morale: 70,
-      status: 'idle',
-      path: [],
-      moveProgress: 0,
-      workRemaining: 0,
-    },
-    {
+      stress: 20,
+      shiftId: 'day',
+      traits: [],
+      assignedPost: 'cutter',
+    }),
+    employee({
       id: 'emp-vera',
       name: 'Вера',
       role: 'сборщик',
@@ -62,12 +86,12 @@ export function createInitialWorld(): WorldState {
       skills: { assembly: 5, logistics: 1 },
       energy: 90,
       morale: 66,
-      status: 'idle',
-      path: [],
-      moveProgress: 0,
-      workRemaining: 0,
-    },
-    {
+      stress: 16,
+      shiftId: 'day',
+      traits: [],
+      assignedPost: 'bench',
+    }),
+    employee({
       id: 'emp-ivan',
       name: 'Иван Петрович',
       role: 'главный механик',
@@ -75,12 +99,12 @@ export function createInitialWorld(): WorldState {
       skills: { mechanics: 5, logistics: 2, machining: 2 },
       energy: 80,
       morale: 74,
-      status: 'idle',
-      path: [],
-      moveProgress: 0,
-      workRemaining: 0,
-    },
-    {
+      stress: 28,
+      shiftId: 'day',
+      traits: ['old-hand'],
+      assignedPost: 'none',
+    }),
+    employee({
       id: 'emp-galina',
       name: 'Галина',
       role: 'начальник ОТК',
@@ -88,11 +112,11 @@ export function createInitialWorld(): WorldState {
       skills: { quality: 5, assembly: 2, logistics: 2 },
       energy: 85,
       morale: 58,
-      status: 'idle',
-      path: [],
-      moveProgress: 0,
-      workRemaining: 0,
-    },
+      stress: 34,
+      shiftId: 'day',
+      traits: ['strict', 'nervous'],
+      assignedPost: 'quality',
+    }),
   ];
 
   const machines: Machine[] = [
@@ -126,6 +150,7 @@ export function createInitialWorld(): WorldState {
     width,
     height,
     tiles: createTiles(width, height),
+    mapVersion: 0,
     facilities: {
       steelStockpile: { x: 4, y: 10 },
       cutter: { x: 15, y: 11 },
@@ -153,6 +178,11 @@ export function createInitialWorld(): WorldState {
       status: 'active',
     },
     qualityChecks: 0,
+    schedule: {
+      dayStartMinute: 8 * 60,
+      dayEndMinute: 20 * 60,
+    },
+    lastPeopleDay: 1,
     timeMinutes: 8 * 60,
     speed: 1,
     paused: false,

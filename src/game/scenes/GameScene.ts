@@ -1,16 +1,49 @@
 import Phaser from 'phaser';
-import { MACHINE_LABELS, ROOM_LABELS } from '../../content/catalog';
+import {
+  AVAILABILITY_LABELS,
+  BUILD_TOOL_LABELS,
+  MACHINE_LABELS,
+  POST_LABELS,
+  ROOM_LABELS,
+  SHIFT_LABELS,
+  SKILL_LABELS,
+  TILE_KIND_LABELS,
+  TRAIT_LABELS,
+  ZONE_LABELS,
+  type BuildTool,
+} from '../../content/catalog';
 import { createInitialWorld } from '../../simulation/createInitialWorld';
-import { currentClock, currentDay, damageCutter, addProductionOrder, getProductionIssues, tickSimulation } from '../../simulation/simulation';
-import type { Employee, Machine, Position, Task, WorldState } from '../../simulation/types';
+import { placeDoor, placeWall, removeStructure, setTileZone, toggleDoor } from '../../simulation/mapEditing';
+import {
+  addProductionOrder,
+  assignEmployeeToPost,
+  boostTaskPriority,
+  cancelTask,
+  currentClock,
+  currentDay,
+  currentShiftPeriod,
+  damageCutter,
+  effectivePriority,
+  getProductionIssues,
+  replanBlockedWork,
+  sendEmployeeToRest,
+  setEmployeeShift,
+  tickSimulation,
+} from '../../simulation/simulation';
+import type { Employee, Machine, Position, RoomId, ShiftId, Task, WorkPost, WorldState, ZoneKind } from '../../simulation/types';
 
 const TILE_SIZE = 28;
+
 export class GameScene extends Phaser.Scene {
   private world: WorldState = createInitialWorld();
   private graphics!: Phaser.GameObjects.Graphics;
   private selectedTile?: Position;
+  private selectedEmployeeId?: string;
+  private activeTool: BuildTool = 'inspect';
   private roomLabels: Phaser.GameObjects.Text[] = [];
   private animationTime = 0;
+  private hudBound = false;
+  private hudCache: Record<string, string> = {};
 
   constructor() {
     super('GameScene');
@@ -23,10 +56,13 @@ export class GameScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       const tile = this.pointerToTile(pointer.x, pointer.y);
-      if (tile) {
-        this.selectedTile = tile;
-        this.updateHud();
-      }
+      if (!tile) return;
+
+      this.selectedTile = tile;
+      const employee = this.world.employees.find((item) => item.position.x === tile.x && item.position.y === tile.y);
+      this.selectedEmployeeId = employee?.id;
+      this.applyTool(tile);
+      this.updateHud(true);
     });
   }
 
@@ -40,25 +76,122 @@ export class GameScene extends Phaser.Scene {
   private setupDomControls(): void {
     document.querySelector<HTMLButtonElement>('#btn-order')?.addEventListener('click', () => {
       addProductionOrder(this.world, 3);
-      this.updateHud();
+      this.updateHud(true);
     });
 
     document.querySelector<HTMLButtonElement>('#btn-break')?.addEventListener('click', () => {
       damageCutter(this.world);
-      this.updateHud();
+      this.updateHud(true);
     });
 
     document.querySelector<HTMLButtonElement>('#btn-pause')?.addEventListener('click', () => {
       this.world.paused = !this.world.paused;
-      this.updateHud();
+      this.updateHud(true);
     });
 
     document.querySelector<HTMLButtonElement>('#btn-speed')?.addEventListener('click', () => {
       const speeds = [1, 3, 8];
       const currentIndex = speeds.indexOf(this.world.speed);
       this.world.speed = speeds[(currentIndex + 1) % speeds.length];
-      this.updateHud();
+      this.updateHud(true);
     });
+
+    document.querySelector<HTMLButtonElement>('#btn-replan')?.addEventListener('click', () => {
+      replanBlockedWork(this.world);
+      this.updateHud(true);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        const tool = button.dataset.tool as BuildTool | undefined;
+        if (!tool) return;
+        this.activeTool = tool;
+        this.updateToolButtons();
+        this.updateMapHint();
+      });
+    });
+
+    if (!this.hudBound) {
+      document.querySelector<HTMLDivElement>('#tasks')?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const button = target?.closest<HTMLButtonElement>('button[data-task-action]');
+        if (!button) return;
+
+        const taskId = button.dataset.taskId;
+        const action = button.dataset.taskAction;
+        if (!taskId || !action) return;
+
+        if (action === 'boost') boostTaskPriority(this.world, taskId, 20);
+        if (action === 'lower') boostTaskPriority(this.world, taskId, -20);
+        if (action === 'cancel') cancelTask(this.world, taskId);
+        this.updateHud(true);
+      });
+
+      document.querySelector<HTMLDivElement>('#staff')?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const button = target?.closest<HTMLButtonElement>('button[data-staff-action]');
+        const row = target?.closest<HTMLElement>('[data-employee-id]');
+        if (row?.dataset.employeeId && !button) {
+          const employee = this.world.employees.find((item) => item.id === row.dataset.employeeId);
+          if (employee) {
+            this.selectedEmployeeId = employee.id;
+            this.selectedTile = { ...employee.position };
+          }
+          this.updateHud(true);
+          return;
+        }
+        if (!button) return;
+
+        const employeeId = button.dataset.employeeId;
+        const action = button.dataset.staffAction;
+        if (!employeeId || !action) return;
+
+        if (action === 'rest') sendEmployeeToRest(this.world, employeeId);
+        if (action === 'shift') {
+          const shift = button.dataset.shift as ShiftId | undefined;
+          if (shift) setEmployeeShift(this.world, employeeId, shift);
+        }
+        if (action === 'post') {
+          const post = button.dataset.post as WorkPost | undefined;
+          if (post) assignEmployeeToPost(this.world, employeeId, post);
+        }
+        this.updateHud(true);
+      });
+      this.hudBound = true;
+    }
+
+    this.updateToolButtons();
+    this.updateMapHint();
+  }
+
+  private applyTool(tile: Position): void {
+    if (this.activeTool === 'inspect') return;
+
+    if (this.activeTool === 'wall') {
+      placeWall(this.world, tile);
+      return;
+    }
+
+    if (this.activeTool === 'door') {
+      const current = this.world.tiles[tile.y * this.world.width + tile.x];
+      if (current.kind === 'door') toggleDoor(this.world, tile);
+      else placeDoor(this.world, tile, true);
+      return;
+    }
+
+    if (this.activeTool === 'destroy') {
+      removeStructure(this.world, tile);
+      return;
+    }
+
+    const zoneMap: Partial<Record<BuildTool, ZoneKind>> = {
+      'zone-storage': 'storage',
+      'zone-work': 'work',
+      'zone-forbidden': 'forbidden',
+      'zone-clear': 'none',
+    };
+    const zone = zoneMap[this.activeTool];
+    if (zone) setTileZone(this.world, tile, zone);
   }
 
   private renderWorld(): void {
@@ -72,7 +205,12 @@ export class GameScene extends Phaser.Scene {
         const py = this.originY + y * TILE_SIZE;
 
         if (tile.kind === 'wall') this.drawWallTile(g, px, py, x, y);
+        else if (tile.kind === 'door') this.drawDoorTile(g, px, py, tile.doorOpen !== false, tile.room);
         else this.drawFloorTile(g, px, py, tile.room, x, y);
+
+        if (tile.zone !== 'none' && tile.kind !== 'wall') {
+          this.drawZoneOverlay(g, px, py, tile.zone);
+        }
       }
     }
 
@@ -207,11 +345,37 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawDoorTile(g: Phaser.GameObjects.Graphics, px: number, py: number, open: boolean, room: RoomId): void {
+    this.drawFloorTile(g, px, py, room, 0, 0);
+    g.fillStyle(open ? 0x6d5a2f : 0x4a3d24, 1);
+    g.fillRect(px + 3, py + 2, 4, 24);
+    g.fillStyle(open ? 0xb79a4a : 0x7a6434, 1);
+    g.fillRect(px + 4, py + 3, 2, 22);
+    if (!open) {
+      g.fillStyle(0x2a2418, 0.55);
+      g.fillRect(px + 8, py + 2, 17, 24);
+      g.fillStyle(0x8d7540, 1);
+      g.fillRect(px + 21, py + 12, 2, 2);
+    }
+  }
+
+  private drawZoneOverlay(g: Phaser.GameObjects.Graphics, px: number, py: number, zone: Exclude<ZoneKind, 'none'>): void {
+    const colors: Record<Exclude<ZoneKind, 'none'>, number> = {
+      storage: 0x4f7d8a,
+      work: 0x8a7a3d,
+      forbidden: 0xa0523d,
+    };
+    g.fillStyle(colors[zone], 0.28);
+    g.fillRect(px + 1, py + 1, 26, 26);
+    g.lineStyle(1, colors[zone], 0.7);
+    g.strokeRect(px + 2, py + 2, 24, 24);
+  }
+
   private drawFloorTile(
     g: Phaser.GameObjects.Graphics,
     px: number,
     py: number,
-    room: 'warehouse' | 'cutting' | 'assembly' | 'admin' | 'corridor',
+    room: RoomId,
     tileX: number,
     tileY: number,
   ): void {
@@ -239,9 +403,6 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(0x57432e, 1); g.fillRect(px + 3, py + 7, 21, 4); g.fillRect(px + 3, py + 18, 21, 4);
       g.fillStyle(0x2b241c, 1); g.fillRect(px + 5, py + 5, 3, 19); g.fillRect(px + 20, py + 5, 3, 19);
     }
-    if (room === 'corridor' && tileX === 10) {
-      g.fillStyle(0xa98e3d, .35); g.fillRect(px + 12, py + 1, 3, 25);
-    }
   }
 
   private employeePalette(id: string): { skin: number; hair: number; shirt: number; trim: number; pants: number } {
@@ -266,9 +427,12 @@ export class GameScene extends Phaser.Scene {
     return { x, y };
   }
 
-  private updateHud(): void {
+  private updateHud(force = false): void {
+    if (force) this.hudCache = {};
+
     const status = document.querySelector<HTMLDivElement>('#status');
     const tasks = document.querySelector<HTMLDivElement>('#tasks');
+    const staff = document.querySelector<HTMLDivElement>('#staff');
     const log = document.querySelector<HTMLDivElement>('#log');
     const selection = document.querySelector<HTMLDivElement>('#selection');
     const pauseButton = document.querySelector<HTMLButtonElement>('#btn-pause');
@@ -276,10 +440,15 @@ export class GameScene extends Phaser.Scene {
     const orderButton = document.querySelector<HTMLButtonElement>('#btn-order');
     const issuesPanel = document.querySelector<HTMLElement>('#issues-panel');
     const issues = document.querySelector<HTMLDivElement>('#issues');
+    const mapTitle = document.querySelector<HTMLElement>('.map-title small');
 
     if (pauseButton) pauseButton.textContent = this.world.paused ? 'Продолжить' : 'Пауза';
     if (speedButton) speedButton.textContent = `Скорость ×${this.world.speed}`;
     if (orderButton) orderButton.disabled = this.world.order.status !== 'active';
+    if (mapTitle) {
+      const period = currentShiftPeriod(this.world) === 'day' ? 'СМЕНА ДЕНЬ' : 'СМЕНА НОЧЬ';
+      mapTitle.textContent = `КОРПУС 01 · ${period}`;
+    }
 
     if (status) {
       const cutter = this.world.machines.find((machine) => machine.kind === 'cutter');
@@ -289,32 +458,83 @@ export class GameScene extends Phaser.Scene {
         completed: 'ВЫПОЛНЕН',
         failed: 'СРОК СОРВАН',
       }[this.world.order.status];
-      status.innerHTML = `<div class="status-top"><div><div class="clock">${currentClock(this.world)}</div><div class="day">День ${currentDay(this.world)} · срок ${this.world.order.dueDay}</div></div></div>
+      const onDuty = this.world.employees.filter((item) => item.availability === 'available').length;
+      this.setHudHtml(status, 'status', `<div class="status-top"><div><div class="clock">${currentClock(this.world)}</div><div class="day">День ${currentDay(this.world)} · срок ${this.world.order.dueDay}</div></div></div>
         <div class="order-state ${this.world.order.status}">${orderState}</div>
         <div class="progress-meta"><span>ГОСЗАКАЗ · КОРПУСА</span><b>${this.world.order.completedProducts} / ${this.world.order.targetProducts}</b></div>
         <div class="progress"><i style="width:${progress}%"></i></div>
         <div class="inventory"><span><b>${this.world.inventory.steelSheet}</b>листы</span><span><b>${this.world.inventory.cutBlank + this.world.inventory.blankAtBench}</b>заготовки</span><span><b>${this.world.inventory.inspectedProduct}</b>ОТК</span><span><b>${this.world.inventory.product}</b>склад</span></div>
-        <div class="machine-state"><span>Р-17 «Ветеран»</span><b>${Math.round(cutter?.condition ?? 0)}% · ${cutter?.operational ? 'В РАБОТЕ' : 'АВАРИЯ'}</b></div>`;
+        <div class="machine-state"><span>Р-17 «Ветеран»</span><b>${Math.round(cutter?.condition ?? 0)}% · ${cutter?.operational ? 'В РАБОТЕ' : 'АВАРИЯ'}</b></div>
+        <div class="machine-state"><span>Личный состав</span><b>${onDuty}/${this.world.employees.length} на месте</b></div>`);
     }
 
     const productionIssues = getProductionIssues(this.world);
     if (issuesPanel && issues) {
       issuesPanel.hidden = productionIssues.length === 0;
-      issues.innerHTML = productionIssues.map((issue) => `<div class="issue issue-${issue.code}">${issue.message}</div>`).join('');
+      this.setHudHtml(issues, 'issues', productionIssues.map((issue) => `<div class="issue issue-${issue.code}">${issue.message}</div>`).join(''));
+    }
+
+    if (staff) {
+      this.renderStaffPanel(staff);
     }
 
     if (tasks) {
       const visibleTasks = this.world.tasks.filter((task) => task.state !== 'completed').slice(-8);
-      tasks.innerHTML = visibleTasks.length > 0 ? visibleTasks.map((task) => this.renderTask(task)).join('') : '<span class="muted">Очередь пуста. Это подозрительно.</span>';
+      const tasksHtml = visibleTasks.length > 0
+        ? visibleTasks.map((task) => this.renderTask(task)).join('')
+        : '<span class="muted">Очередь пуста. Это подозрительно.</span>';
+      this.setHudHtml(tasks, 'tasks', tasksHtml);
     }
 
     if (log) {
-      log.innerHTML = this.world.log.map((entry) => `<div>${entry}</div>`).join('');
+      this.setHudHtml(log, 'log', this.world.log.map((entry) => `<div>${entry}</div>`).join(''));
     }
 
     if (selection) {
-      selection.innerHTML = this.renderSelection();
+      this.setHudHtml(selection, 'selection', this.renderSelection());
     }
+  }
+
+  private setHudHtml(element: HTMLElement, key: string, html: string): void {
+    if (this.hudCache[key] === html) return;
+    this.hudCache[key] = html;
+    element.innerHTML = html;
+  }
+
+  private renderStaffPanel(staff: HTMLDivElement): void {
+    const signature = this.world.employees.map((employee) => {
+      const selected = this.isEmployeeSelected(employee) ? '1' : '0';
+      const skills = Object.entries(employee.skills).map(([skill, value]) => `${skill}:${value}`).join(',');
+      return [employee.id, employee.availability, employee.shiftId, employee.assignedPost, employee.status, skills, employee.traits.join(','), selected].join('/');
+    }).join('|');
+
+    if (this.hudCache.staffSig !== signature) {
+      this.hudCache.staffSig = signature;
+      staff.innerHTML = this.world.employees.map((item) => this.renderStaffRow(item)).join('');
+      return;
+    }
+
+    for (const employee of this.world.employees) {
+      const vitals = staff.querySelector(`[data-employee-vitals="${employee.id}"]`);
+      if (vitals) {
+        vitals.textContent = `Э ${Math.round(employee.energy)} · М ${Math.round(employee.morale)} · С ${Math.round(employee.stress)}`;
+      }
+    }
+  }
+
+  private isEmployeeSelected(employee: Employee): boolean {
+    return this.selectedEmployeeId === employee.id;
+  }
+
+  private updateToolButtons(): void {
+    document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((button) => {
+      button.classList.toggle('active', button.dataset.tool === this.activeTool);
+    });
+  }
+
+  private updateMapHint(): void {
+    const hint = document.querySelector<HTMLDivElement>('.map-hint');
+    if (hint) hint.textContent = `ЛКМ · ${BUILD_TOOL_LABELS[this.activeTool].toUpperCase()}`;
   }
 
   private get originX(): number { return Math.max(24, Math.floor((this.scale.width - this.world.width * TILE_SIZE) / 2)); }
@@ -353,26 +573,90 @@ export class GameScene extends Phaser.Scene {
       failed: 'не выполнено',
     };
     const details = task.blockedReason ?? (employee ? employee.name : undefined);
-    return `<div class="task task-${task.state}"><b>${task.title}</b><br /><span>${stateLabel[task.state]}${details ? ` · ${details}` : ''}</span></div>`;
+    const canManage = !['completed', 'failed'].includes(task.state);
+    const controls = canManage
+      ? `<div class="task-actions">
+          <button type="button" data-task-action="boost" data-task-id="${task.id}">↑</button>
+          <button type="button" data-task-action="lower" data-task-id="${task.id}">↓</button>
+          <button type="button" data-task-action="cancel" data-task-id="${task.id}">×</button>
+        </div>`
+      : '';
+    return `<div class="task task-${task.state}"><div class="task-head"><b>${task.title}</b><span class="prio">P${effectivePriority(task)}</span></div><span>${stateLabel[task.state]}${details ? ` · ${details}` : ''}</span>${controls}</div>`;
+  }
+
+  private renderStaffRow(employee: Employee): string {
+    const selected = this.isEmployeeSelected(employee);
+    const skills = Object.entries(employee.skills)
+      .map(([skill, value]) => `${SKILL_LABELS[skill as keyof typeof SKILL_LABELS]} ${value}`)
+      .join(', ');
+    const traits = employee.traits.map((trait) => TRAIT_LABELS[trait]).join(', ') || 'без особенностей';
+    const controls = selected
+      ? `<div class="staff-actions">
+          <button type="button" data-staff-action="rest" data-employee-id="${employee.id}">Отдых</button>
+          <button type="button" data-staff-action="shift" data-shift="day" data-employee-id="${employee.id}">День</button>
+          <button type="button" data-staff-action="shift" data-shift="night" data-employee-id="${employee.id}">Ночь</button>
+          <button type="button" data-staff-action="shift" data-shift="off" data-employee-id="${employee.id}">Выходной</button>
+          <button type="button" data-staff-action="post" data-post="cutter" data-employee-id="${employee.id}">Резак</button>
+          <button type="button" data-staff-action="post" data-post="bench" data-employee-id="${employee.id}">Сборка</button>
+          <button type="button" data-staff-action="post" data-post="quality" data-employee-id="${employee.id}">ОТК</button>
+          <button type="button" data-staff-action="post" data-post="logistics" data-employee-id="${employee.id}">Логистика</button>
+          <button type="button" data-staff-action="post" data-post="none" data-employee-id="${employee.id}">Снять пост</button>
+        </div>`
+      : '';
+
+    return `<div class="staff-row${selected ? ' selected' : ''}" data-employee-id="${employee.id}">
+      <div class="task-head"><b>${employee.name}</b><span>${AVAILABILITY_LABELS[employee.availability]}</span></div>
+      <span>${employee.role} · ${SHIFT_LABELS[employee.shiftId]} · ${POST_LABELS[employee.assignedPost]}</span>
+      <span data-employee-vitals="${employee.id}">Э ${Math.round(employee.energy)} · М ${Math.round(employee.morale)} · С ${Math.round(employee.stress)}</span>
+      <span>${skills}</span>
+      <span>${traits}</span>
+      ${controls}
+    </div>`;
   }
 
   private renderSelection(): string {
-    if (!this.selectedTile) {
+    if (!this.selectedTile && !this.selectedEmployeeId) {
       return '<span class="muted">Кликни по клетке на карте.</span>';
     }
 
-    const tile = this.world.tiles[this.selectedTile.y * this.world.width + this.selectedTile.x];
-    const employee = this.world.employees.find((item) => item.position.x === this.selectedTile?.x && item.position.y === this.selectedTile?.y);
-    const machine = this.world.machines.find((item) => item.position.x === this.selectedTile?.x && item.position.y === this.selectedTile?.y);
+    const employee = this.selectedEmployeeId
+      ? this.world.employees.find((item) => item.id === this.selectedEmployeeId)
+      : this.world.employees.find((item) => item.position.x === this.selectedTile?.x && item.position.y === this.selectedTile?.y);
+    const tilePosition = this.selectedTile ?? employee?.position;
+    if (!tilePosition) {
+      return '<span class="muted">Кликни по клетке на карте.</span>';
+    }
 
-    const lines = [`Клетка ${this.selectedTile.x}:${this.selectedTile.y}`, `Помещение: ${ROOM_LABELS[tile.room]}`];
+    const tile = this.world.tiles[tilePosition.y * this.world.width + tilePosition.x];
+    const machine = this.world.machines.find((item) => item.position.x === tilePosition.x && item.position.y === tilePosition.y);
+
+    const lines = [
+      `Клетка ${tilePosition.x}:${tilePosition.y}`,
+      `Покрытие: ${TILE_KIND_LABELS[tile.kind]}${tile.kind === 'door' ? (tile.doorOpen ? ' · открыта' : ' · закрыта') : ''}`,
+      `Помещение: ${ROOM_LABELS[tile.room]}`,
+      `Зона: ${ZONE_LABELS[tile.zone]}`,
+      `Инструмент: ${BUILD_TOOL_LABELS[this.activeTool]}`,
+    ];
 
     if (machine) {
       lines.push(`Оборудование: ${machine.name}`, `Тип: ${MACHINE_LABELS[machine.kind]}`, `Состояние: ${Math.round(machine.condition)}%`);
     }
 
     if (employee) {
-      lines.push(`Сотрудник: ${employee.name}`, `Должность: ${employee.role}`, `Энергия: ${Math.round(employee.energy)}%`, `Статус: ${employee.status}`);
+      const skills = Object.entries(employee.skills)
+        .map(([skill, value]) => `${SKILL_LABELS[skill as keyof typeof SKILL_LABELS]} ${value}`)
+        .join(', ');
+      const traits = employee.traits.map((trait) => TRAIT_LABELS[trait]).join(', ') || 'нет';
+      lines.push(
+        `Сотрудник: ${employee.name}`,
+        `Должность: ${employee.role}`,
+        `Смена: ${SHIFT_LABELS[employee.shiftId]} · ${AVAILABILITY_LABELS[employee.availability]}`,
+        `Пост: ${POST_LABELS[employee.assignedPost]}`,
+        `Энергия: ${Math.round(employee.energy)}% · Мораль: ${Math.round(employee.morale)} · Стресс: ${Math.round(employee.stress)}`,
+        `Навыки: ${skills}`,
+        `Особенности: ${traits}`,
+        `Статус: ${employee.status}`,
+      );
     }
 
     return lines.join('<br />');

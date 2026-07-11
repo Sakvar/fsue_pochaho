@@ -24,7 +24,13 @@ export function tileAt(world: WorldState, position: Position) {
 }
 
 export function isPassable(world: WorldState, position: Position): boolean {
-  return isInside(world, position) && tileAt(world, position).kind !== 'wall';
+  if (!isInside(world, position)) return false;
+
+  const tile = tileAt(world, position);
+  if (tile.kind === 'wall') return false;
+  if (tile.kind === 'door' && tile.doorOpen === false) return false;
+  if (tile.zone === 'forbidden') return false;
+  return true;
 }
 
 export function findPath(world: WorldState, start: Position, goal: Position): Position[] {

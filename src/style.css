@@ -70,6 +70,8 @@ button.danger { color: #edc4b6; border-color: #70473c; }
 .map-hint { left:26px; bottom:20px; color:#706f65; font:10px ui-monospace, monospace; letter-spacing:.1em; }
 
 .hud {
+  position: relative;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -120,6 +122,53 @@ h2 em { color:#cdbb60; font:normal 9px ui-monospace, monospace; }
   gap: 8px;
 }
 
+.tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.tool-btn {
+  padding: 8px 9px;
+  font-size: 11px;
+}
+
+.tool-btn.active {
+  color: #171812;
+  border-color: #cbb55d;
+  background: linear-gradient(#d4c36a, #b7a24c);
+}
+
+#btn-replan {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.task-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.prio {
+  color: #9d9570;
+  font: 10px ui-monospace, monospace;
+}
+
+.task-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.task-actions button {
+  padding: 4px 8px;
+  min-width: 28px;
+  font-size: 11px;
+  text-align: center;
+}
+
 .panel {
   padding: 12px 13px;
   border: 1px solid #3d3e36;
@@ -162,6 +211,27 @@ h2 em { color:#cdbb60; font:normal 9px ui-monospace, monospace; }
   border-top: 0;
 }
 
+.staff-row {
+  position: relative;
+  padding: 8px 4px 8px 0;
+  border-top: 1px solid #3c3d35;
+  font-size: 11px;
+  cursor: pointer;
+}
+.staff-row:first-child { border-top: 0; }
+.staff-row.selected { background: #2f3029; margin: 0 -6px; padding-left: 6px; padding-right: 6px; }
+.staff-row span { display: block; color: #89877c; margin-top: 2px; }
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.staff-actions button {
+  padding: 5px 7px;
+  font-size: 10px;
+}
+
 .task span,
 .muted {
   color: #89877c;
@@ -186,6 +256,13 @@ h2 em { color:#cdbb60; font:normal 9px ui-monospace, monospace; }
 
 canvas {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.game-root canvas {
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 900px) {
