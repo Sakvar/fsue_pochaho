@@ -14,8 +14,10 @@ export type TaskType =
   | 'assemble-product'
   | 'inspect-product'
   | 'rework-product'
+  | 'scrap-product'
   | 'deliver-product'
-  | 'repair-machine';
+  | 'repair-machine'
+  | 'service-machine';
 
 export type TaskState = 'queued' | 'blocked' | 'assigned' | 'moving' | 'working' | 'completed' | 'failed';
 export type EmployeeStatus = 'idle' | 'moving' | 'working';
@@ -30,6 +32,12 @@ export interface Position {
   y: number;
 }
 
+/** Axis-aligned footprint in tiles; `position` is the top-left cell. */
+export interface Size {
+  width: number;
+  height: number;
+}
+
 export interface Tile {
   kind: TileKind;
   room: RoomId;
@@ -37,12 +45,18 @@ export interface Tile {
   doorOpen?: boolean;
 }
 
+/** Placed prop / work station on the map. */
+export interface Facility {
+  position: Position;
+  size: Size;
+}
+
 export interface FacilityPositions {
-  steelStockpile: Position;
-  cutter: Position;
-  bench: Position;
-  qualityDesk: Position;
-  finishedStockpile: Position;
+  steelStockpile: Facility;
+  cutter: Facility;
+  bench: Facility;
+  qualityDesk: Facility;
+  finishedStockpile: Facility;
 }
 
 export interface Employee {
@@ -69,13 +83,23 @@ export interface Employee {
   workRemaining: number;
 }
 
+export interface ServiceRecord {
+  day: number;
+  kind: 'repair' | 'service';
+  note: string;
+  partsUsed: number;
+}
+
 export interface Machine {
   id: string;
   name: string;
   kind: 'cutter' | 'bench' | 'old-press';
   position: Position;
+  size: Size;
   condition: number;
   operational: boolean;
+  hoursSinceService: number;
+  serviceLog: ServiceRecord[];
 }
 
 export interface Inventory {
@@ -87,6 +111,16 @@ export interface Inventory {
   inspectedProduct: number;
   defectiveProduct: number;
   product: number;
+  spareParts: number;
+  scrap: number;
+}
+
+/** Parallel queues tracking unit quality alongside inventory counts. */
+export interface QualityQueues {
+  cutBlank: number[];
+  blankAtBench: number[];
+  assembledAtBench: number[];
+  inspectedProduct: Array<'good' | 'hidden'>;
 }
 
 export interface ProductionOrder {
@@ -112,7 +146,7 @@ export interface Task {
 }
 
 export interface ProductionIssue {
-  code: 'materials' | 'specialist' | 'route' | 'machine' | 'deadline' | 'fatigue' | 'absence' | 'shift';
+  code: 'materials' | 'specialist' | 'route' | 'machine' | 'deadline' | 'fatigue' | 'absence' | 'shift' | 'parts' | 'quality';
   message: string;
 }
 
@@ -126,8 +160,13 @@ export interface WorldState {
   machines: Machine[];
   tasks: Task[];
   inventory: Inventory;
+  qualityQueues: QualityQueues;
   order: ProductionOrder;
   qualityChecks: number;
+  reputation: number;
+  shippedHiddenDefects: number;
+  preferScrap: boolean;
+  rngState: number;
   schedule: ShiftSchedule;
   lastPeopleDay: number;
   timeMinutes: number;

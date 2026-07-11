@@ -1,10 +1,32 @@
-import type { Machine, ShiftId, EmployeeAvailability, WorkPost, ZoneKind } from '../simulation/types';
+import type { FacilityPositions, Machine, ShiftId, EmployeeAvailability, Size, WorkPost, ZoneKind } from '../simulation/types';
 import { TRAITS } from './traits';
 
 export const MACHINE_LABELS: Record<Machine['kind'], string> = {
   cutter: 'станок резки',
   bench: 'сборочный верстак',
   'old-press': 'пресс, который лучше не трогать',
+};
+
+export const MACHINE_SIZES: Record<Machine['kind'], Size> = {
+  cutter: { width: 3, height: 2 },
+  bench: { width: 2, height: 1 },
+  'old-press': { width: 2, height: 2 },
+};
+
+export const FACILITY_LABELS: Record<keyof FacilityPositions, string> = {
+  steelStockpile: 'штабель стали',
+  cutter: 'пост резки',
+  bench: 'пост сборки',
+  qualityDesk: 'стол ОТК',
+  finishedStockpile: 'готовая продукция',
+};
+
+export const FACILITY_SIZES: Record<keyof FacilityPositions, Size> = {
+  steelStockpile: { width: 2, height: 2 },
+  cutter: { width: 1, height: 1 },
+  bench: { width: 1, height: 1 },
+  qualityDesk: { width: 2, height: 1 },
+  finishedStockpile: { width: 2, height: 2 },
 };
 
 export const ROOM_LABELS = {

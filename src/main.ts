@@ -32,13 +32,10 @@ root.innerHTML = `
         <button id="btn-pause" class="primary" type="button">Ⅱ &nbsp;Пауза</button>
         <button id="btn-speed" type="button">Скорость ×1</button>
         <button id="btn-order" type="button">＋ План +3</button>
+        <button id="btn-parts" type="button">＋ Запчасти</button>
+        <button id="btn-scrap" type="button">Списать брак</button>
         <button id="btn-break" class="danger" type="button">⚠ Авария Р-17</button>
       </div>
-
-      <section class="panel">
-        <h2><span>Инструменты</span><small>СТРОЙКА И ЗОНЫ</small></h2>
-        <div id="tools" class="tools">${toolButtons}</div>
-      </section>
 
       <section class="panel status-panel">
         <h2><span>Оперативная сводка</span><em>LIVE</em></h2>
@@ -51,13 +48,13 @@ root.innerHTML = `
         <button id="btn-replan" type="button">Перепланировать наряды</button>
       </section>
 
-      <section class="panel">
-        <h2><span>Инспектор</span><small>ОБЪЕКТ НА КАРТЕ</small></h2>
-        <div id="selection" class="mono muted">Кликни по клетке на карте.</div>
+      <section class="panel inspector-panel">
+        <h2><span>Инспектор</span><small>ВЫБОР</small></h2>
+        <div id="selection" class="muted">Кликни по клетке или сотруднику.</div>
       </section>
 
       <section class="panel">
-        <h2><span>Личный состав</span><small>СМЕНЫ И НАЗНАЧЕНИЯ</small></h2>
+        <h2><span>Личный состав</span><small>КЛИК → ИНСПЕКТОР</small></h2>
         <div id="staff"></div>
       </section>
 
@@ -66,8 +63,13 @@ root.innerHTML = `
         <div id="tasks"></div>
       </section>
 
+      <section class="panel tools-panel">
+        <h2><span>Стройка</span><small>ЗОНЫ И СТЕНЫ</small></h2>
+        <div id="tools" class="tools">${toolButtons}</div>
+      </section>
+
       <section class="panel log-panel">
-        <h2><span>Журнал директора</span><small>ПОСЛЕДНИЕ СОБЫТИЯ</small></h2>
+        <h2><span>Журнал</span><small>ПОСЛЕДНИЕ</small></h2>
         <div id="log"></div>
       </section>
     </aside>

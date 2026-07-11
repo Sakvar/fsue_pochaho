@@ -37,11 +37,15 @@ export function postForTask(task: Task): WorkPost {
     case 'rework-product':
       return 'bench';
     case 'inspect-product':
+    case 'scrap-product':
       return 'quality';
     case 'haul-steel':
     case 'haul-blank':
     case 'deliver-product':
       return 'logistics';
+    case 'repair-machine':
+    case 'service-machine':
+      return 'none';
     default:
       return 'none';
   }
@@ -131,9 +135,39 @@ export function setEmployeeShift(world: WorldState, employeeId: string, shiftId:
   return true;
 }
 
+/** Max operators for a machine post; `undefined` means no hard limit. */
+export function postCapacity(world: WorldState, post: WorkPost): number | undefined {
+  if (post === 'cutter') {
+    return Math.max(0, world.machines.filter((machine) => machine.kind === 'cutter').length);
+  }
+  if (post === 'bench') {
+    return Math.max(0, world.machines.filter((machine) => machine.kind === 'bench').length);
+  }
+  return undefined;
+}
+
+export function countPostAssignees(world: WorldState, post: WorkPost, exceptEmployeeId?: string): number {
+  return world.employees.filter(
+    (employee) => employee.assignedPost === post && employee.id !== exceptEmployeeId,
+  ).length;
+}
+
 export function assignEmployeeToPost(world: WorldState, employeeId: string, post: WorkPost): boolean {
   const employee = world.employees.find((item) => item.id === employeeId);
   if (!employee) return false;
+  if (employee.assignedPost === post) return true;
+
+  const capacity = postCapacity(world, post);
+  if (capacity !== undefined) {
+    const occupied = countPostAssignees(world, post, employeeId);
+    if (occupied >= capacity) {
+      addPeopleLog(
+        world,
+        `Пост «${postLabel(post)}» занят (${occupied}/${capacity}). Снимите текущего оператора.`,
+      );
+      return false;
+    }
+  }
 
   employee.assignedPost = post;
   addPeopleLog(world, `${employee.name}: назначение «${postLabel(post)}».`);

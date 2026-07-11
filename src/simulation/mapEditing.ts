@@ -1,3 +1,4 @@
+import { isOccupied } from './occupancy';
 import { findPath, isInside, samePosition, tileAt } from './pathfinding';
 import type { Employee, Position, RoomId, Task, WorldState, ZoneKind } from './types';
 
@@ -132,12 +133,6 @@ function canEditStructure(world: WorldState, position: Position): MapEditResult 
 
 function isOuterBoundary(world: WorldState, position: Position): boolean {
   return position.x === 0 || position.y === 0 || position.x === world.width - 1 || position.y === world.height - 1;
-}
-
-function isOccupied(world: WorldState, position: Position): boolean {
-  if (world.employees.some((employee) => samePosition(employee.position, position))) return true;
-  if (world.machines.some((machine) => samePosition(machine.position, position))) return true;
-  return Object.values(world.facilities).some((facility) => samePosition(facility, position));
 }
 
 function blockTask(task: Task, reason: string): void {

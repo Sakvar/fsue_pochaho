@@ -1,4 +1,5 @@
 import { PRODUCTION_TASKS, type TaskRule } from '../content/productionRules';
+import { repairBlockedReason, serviceBlockedReason } from './equipment';
 import { findPath, samePosition } from './pathfinding';
 import {
   applyActivityFatigue,
@@ -6,19 +7,25 @@ import {
   currentShiftPeriod,
   employeeBlockReason,
   grantSkillXp,
+  postForTask,
   scoreEmployeeForTask,
   updatePeopleSystems,
 } from './people';
+import { adjustReputation, reputationLabel } from './quality';
 import type { Employee, Machine, ProductionIssue, Task, WorldState } from './types';
 
 export {
   assignEmployeeToPost,
+  countPostAssignees,
   currentShiftPeriod,
   isOnShift,
   makeSick,
+  postCapacity,
   sendEmployeeToRest,
   setEmployeeShift,
 } from './people';
+
+export { reputationLabel } from './quality';
 
 const MOVE_STEP_SECONDS = 0.18;
 const DAY_MINUTES = 24 * 60;
@@ -80,6 +87,24 @@ export function damageCutter(world: WorldState): void {
   addLog(world, 'Станок Р-17 остановлен: характерный запах перегретого наследия.');
 }
 
+export function orderSpareParts(world: WorldState, amount = 2): void {
+  world.inventory.spareParts += amount;
+  addLog(world, `Снабжение выдало запчасти: +${amount} (всего ${world.inventory.spareParts}).`);
+}
+
+export function requestScrapInsteadOfRework(world: WorldState): boolean {
+  if (world.inventory.defectiveProduct < 1) {
+    addLog(world, 'Списывать нечего: брака на ОТК нет.');
+    return false;
+  }
+
+  world.preferScrap = true;
+  const rework = world.tasks.find((task) => task.type === 'rework-product' && !['completed', 'failed'].includes(task.state));
+  if (rework) cancelTask(world, rework.id);
+  addLog(world, 'Директор приказал списать брак вместо переделки.');
+  return true;
+}
+
 export function boostTaskPriority(world: WorldState, taskId: string, delta = 20): boolean {
   const task = world.tasks.find((item) => item.id === taskId);
   if (!task || ['completed', 'failed'].includes(task.state)) return false;
@@ -135,10 +160,23 @@ function updateOrderStatus(world: WorldState): void {
 
   if (world.order.completedProducts >= world.order.targetProducts) {
     world.order.status = 'completed';
-    addLog(world, `Заказ выполнен: сдано ${world.order.completedProducts} корпусов.`);
+    if (world.shippedHiddenDefects > 0) {
+      adjustReputation(world, -5 * world.shippedHiddenDefects);
+      addLog(
+        world,
+        `Заказ выполнен, но ${world.shippedHiddenDefects} корпус(ов) ушли со скрытым браком. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
+      );
+    } else {
+      adjustReputation(world, 4);
+      addLog(
+        world,
+        `Заказ выполнен: сдано ${world.order.completedProducts} корпусов. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
+      );
+    }
   } else if (currentDay(world) > world.order.dueDay) {
     world.order.status = 'failed';
-    addLog(world, `Срок заказа сорван: сдано ${world.order.completedProducts} из ${world.order.targetProducts}.`);
+    adjustReputation(world, -12);
+    addLog(world, `Срок заказа сорван: сдано ${world.order.completedProducts} из ${world.order.targetProducts}. Репутация падает.`);
     for (const task of world.tasks.filter((item) => !['completed', 'failed'].includes(item.state))) {
       task.state = 'failed';
       task.blockedReason = 'Заказ закрыт после срыва срока';
@@ -164,8 +202,8 @@ function ensureTask(world: WorldState, rule: TaskRule): void {
     id: `task-${world.nextTaskId}`,
     type: rule.type,
     title: rule.title,
-    source: world.facilities[rule.source],
-    destination: rule.destination ? world.facilities[rule.destination] : undefined,
+    source: world.facilities[rule.source].position,
+    destination: rule.destination ? world.facilities[rule.destination].position : undefined,
     requiredSkill: rule.requiredSkill,
     duration: rule.duration,
     priority: rule.priority,
@@ -190,6 +228,20 @@ function assignTasks(world: WorldState): void {
 
     const employee = findBestEmployee(world, task);
     if (!employee) {
+      const requiredPost = machineOperatorPost(task);
+      if (requiredPost) {
+        const operators = world.employees.filter((item) => item.assignedPost === requiredPost);
+        if (operators.length === 0) {
+          blockTask(task, `Нет оператора на посту «${postTitle(requiredPost)}»`);
+          continue;
+        }
+        const reason = operators.map((item) => employeeBlockReason(item, world)).find((item) => item && item !== 'Занят');
+        if (reason) {
+          blockTask(task, reason);
+          continue;
+        }
+      }
+
       const qualified = world.employees.filter((item) => !task.requiredSkill || (item.skills[task.requiredSkill] ?? 0) > 0);
       if (qualified.length === 0) {
         blockTask(task, 'Нет сотрудника с требуемым навыком');
@@ -221,12 +273,14 @@ function assignTasks(world: WorldState): void {
 function findBestEmployee(world: WorldState, task: Task): Employee | undefined {
   let best: Employee | undefined;
   let bestScore = Number.NEGATIVE_INFINITY;
+  const requiredPost = machineOperatorPost(task);
 
   for (const employee of world.employees) {
     if (employeeBlockReason(employee, world)) continue;
 
     const skill = task.requiredSkill ? employee.skills[task.requiredSkill] ?? 0 : 1;
     if (task.requiredSkill && skill <= 0) continue;
+    if (requiredPost && employee.assignedPost !== requiredPost) continue;
 
     const score = scoreEmployeeForTask(employee, task, world);
     if (score > bestScore) {
@@ -236,6 +290,16 @@ function findBestEmployee(world: WorldState, task: Task): Employee | undefined {
   }
 
   return best;
+}
+
+/** Machine posts require a dedicated operator; other work stays open to any qualified staff. */
+function machineOperatorPost(task: Task): 'cutter' | 'bench' | undefined {
+  const post = postForTask(task);
+  return post === 'cutter' || post === 'bench' ? post : undefined;
+}
+
+function postTitle(post: 'cutter' | 'bench'): string {
+  return post === 'cutter' ? 'резак' : 'сборка';
 }
 
 function updateEmployee(world: WorldState, employee: Employee, scaledDelta: number): void {
@@ -326,7 +390,7 @@ function completeTask(world: WorldState, employee: Employee, task: Task): void {
     return;
   }
 
-  const resultMessage = rule.complete(world);
+  const resultMessage = rule.complete(world, employee);
   task.state = 'completed';
   grantSkillXp(world, employee, task.requiredSkill, Math.max(8, Math.round(task.duration * 4)));
   employee.morale = Math.min(100, employee.morale + 1.5);
@@ -350,9 +414,20 @@ function blockTask(task: Task, reason: string): void {
 }
 
 function getEquipmentBlock(world: WorldState, task: Task): string | undefined {
-  if (task.type !== 'cut-steel') return undefined;
-  const cutter = getMachine(world, 'cutter');
-  return cutter.operational ? undefined : `${cutter.name} неисправен`;
+  if (task.type === 'cut-steel') {
+    const cutter = getMachine(world, 'cutter');
+    return cutter.operational ? undefined : `${cutter.name} неисправен`;
+  }
+
+  if (task.type === 'repair-machine') {
+    return repairBlockedReason(world);
+  }
+
+  if (task.type === 'service-machine') {
+    return serviceBlockedReason(world);
+  }
+
+  return undefined;
 }
 
 function countPotentialProducts(world: WorldState): number {
@@ -375,6 +450,26 @@ export function getProductionIssues(world: WorldState): ProductionIssue[] {
   const cutter = getMachine(world, 'cutter');
   if (!cutter.operational) {
     issues.push({ code: 'machine', message: `${cutter.name} неисправен` });
+    if (world.inventory.spareParts < 1) {
+      issues.push({ code: 'parts', message: 'Нет запчастей для ремонта Р-17' });
+    }
+  } else if (cutter.condition <= 55 && world.inventory.spareParts < 1) {
+    issues.push({ code: 'parts', message: 'Нет запчастей для обслуживания Р-17' });
+  }
+
+  if (!world.employees.some((employee) => employee.assignedPost === 'cutter')) {
+    issues.push({ code: 'specialist', message: 'Нет оператора на посту резки' });
+  }
+  if (!world.employees.some((employee) => employee.assignedPost === 'bench')) {
+    issues.push({ code: 'specialist', message: 'Нет оператора на посту сборки' });
+  }
+
+  if (world.reputation < 35) {
+    issues.push({ code: 'quality', message: `Репутация качества низкая (${Math.round(world.reputation)})` });
+  }
+
+  if (world.inventory.defectiveProduct > 0) {
+    issues.push({ code: 'quality', message: `На ОТК брак: ${world.inventory.defectiveProduct} шт.` });
   }
 
   const resting = world.employees.filter((item) => item.availability === 'resting').length;
@@ -396,6 +491,7 @@ export function getProductionIssues(world: WorldState): ProductionIssue[] {
     else if (reason.includes('смен')) code = 'shift';
     else if (reason.includes('больнич') || reason.includes('Отсутствует')) code = 'absence';
     else if (reason.includes('отдых') || reason.includes('сил') || reason.includes('предел')) code = 'fatigue';
+    else if (reason.includes('запчаст')) code = 'parts';
     if (!issues.some((issue) => issue.code === code && issue.message.includes(task.title))) {
       issues.push({ code, message: `${task.title}: ${reason || 'работа заблокирована'}` });
     }
