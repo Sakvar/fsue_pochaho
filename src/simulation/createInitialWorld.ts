@@ -1,4 +1,7 @@
 import { FACILITY_SIZES, MACHINE_SIZES } from '../content/catalog';
+import { CANDIDATE_POOL } from '../content/candidates';
+import { CONTRACT_TEMPLATES, STARTING_FUNDS } from '../content/contracts';
+import { idleOrder, makeOffer } from './contracts';
 import { roomForPosition } from './mapEditing';
 import type { Employee, Machine, Tile, WorldState } from './types';
 
@@ -34,9 +37,8 @@ function createTiles(width: number, height: number): Tile[] {
   return tiles;
 }
 
-function employee(partial: Omit<Employee, 'skillXp' | 'stress' | 'health' | 'availability' | 'status' | 'path' | 'moveProgress' | 'workRemaining'> & Partial<Employee>): Employee {
+function employee(partial: Omit<Employee, 'stress' | 'health' | 'availability' | 'status' | 'path' | 'moveProgress' | 'workRemaining'> & Partial<Employee>): Employee {
   return {
-    skillXp: {},
     stress: 18,
     health: 100,
     availability: 'available',
@@ -59,6 +61,7 @@ export function createInitialWorld(): WorldState {
       role: 'кладовщик',
       position: { x: 5, y: 8 },
       skills: { logistics: 4 },
+      salary: 16,
       energy: 92,
       morale: 62,
       stress: 22,
@@ -72,6 +75,7 @@ export function createInitialWorld(): WorldState {
       role: 'станочник',
       position: { x: 15, y: 9 },
       skills: { machining: 5, logistics: 1 },
+      salary: 20,
       energy: 88,
       morale: 70,
       stress: 20,
@@ -85,6 +89,7 @@ export function createInitialWorld(): WorldState {
       role: 'сборщик',
       position: { x: 24, y: 13 },
       skills: { assembly: 5, logistics: 1 },
+      salary: 18,
       energy: 90,
       morale: 66,
       stress: 16,
@@ -98,11 +103,12 @@ export function createInitialWorld(): WorldState {
       role: 'главный механик',
       position: { x: 19, y: 4 },
       skills: { mechanics: 5, logistics: 2, machining: 2 },
+      salary: 24,
       energy: 80,
       morale: 74,
       stress: 28,
       shiftId: 'day',
-      traits: ['old-hand'],
+      traits: ['old-timer', 'old-hand'],
       assignedPost: 'none',
     }),
     employee({
@@ -111,6 +117,7 @@ export function createInitialWorld(): WorldState {
       role: 'начальник ОТК',
       position: { x: 25, y: 16 },
       skills: { quality: 5, assembly: 2, logistics: 2 },
+      salary: 22,
       energy: 85,
       morale: 58,
       stress: 34,
@@ -130,6 +137,7 @@ export function createInitialWorld(): WorldState {
       condition: 76,
       operational: true,
       hoursSinceService: 40,
+      wearMod: 1,
       serviceLog: [{ day: 1, kind: 'service', note: 'Последнее ТО по журналу (бумага помнит)', partsUsed: 1 }],
     },
     {
@@ -141,6 +149,7 @@ export function createInitialWorld(): WorldState {
       condition: 92,
       operational: true,
       hoursSinceService: 12,
+      wearMod: 1,
       serviceLog: [],
     },
     {
@@ -152,6 +161,7 @@ export function createInitialWorld(): WorldState {
       condition: 18,
       operational: false,
       hoursSinceService: 200,
+      wearMod: 1,
       serviceLog: [{ day: 1, kind: 'repair', note: 'Ремонт отклонён снабжением', partsUsed: 0 }],
     },
   ];
@@ -169,6 +179,11 @@ export function createInitialWorld(): WorldState {
       finishedStockpile: { position: { x: 26, y: 15 }, size: { ...FACILITY_SIZES.finishedStockpile } },
     },
     employees,
+    hirePool: CANDIDATE_POOL.slice(0, 4).map((item) => ({
+      ...item,
+      skills: { ...item.skills },
+      traits: [...item.traits],
+    })),
     machines,
     tasks: [],
     inventory: {
@@ -189,12 +204,9 @@ export function createInitialWorld(): WorldState {
       assembledAtBench: [],
       inspectedProduct: [],
     },
-    order: {
-      targetProducts: 3,
-      completedProducts: 0,
-      dueDay: 30,
-      status: 'active',
-    },
+    funds: STARTING_FUNDS,
+    contracts: CONTRACT_TEMPLATES.slice(0, 3).map((template, index) => makeOffer(template, index)),
+    order: idleOrder(),
     qualityChecks: 0,
     reputation: 58,
     shippedHiddenDefects: 0,
@@ -205,10 +217,12 @@ export function createInitialWorld(): WorldState {
       dayEndMinute: 20 * 60,
     },
     lastPeopleDay: 1,
+    nextEmployeeId: 100,
+    nextContractOffer: 3,
     timeMinutes: 8 * 60,
     speed: 1,
     paused: false,
     nextTaskId: 1,
-    log: ['Получен заказ: изготовить 3 корпуса за 30 дней.'],
+    log: ['На столе три контракта. Без принятого заказа цех стоит.'],
   };
 }

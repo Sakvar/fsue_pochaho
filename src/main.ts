@@ -31,8 +31,8 @@ root.innerHTML = `
       <div class="controls">
         <button id="btn-pause" class="primary" type="button">Ⅱ &nbsp;Пауза</button>
         <button id="btn-speed" type="button">Скорость ×1</button>
-        <button id="btn-order" type="button">＋ План +3</button>
         <button id="btn-parts" type="button">＋ Запчасти</button>
+        <button id="btn-upgrade" type="button">⬆ Модерн. Р-17</button>
         <button id="btn-scrap" type="button">Списать брак</button>
         <button id="btn-break" class="danger" type="button">⚠ Авария Р-17</button>
       </div>
@@ -40,6 +40,16 @@ root.innerHTML = `
       <section class="panel status-panel">
         <h2><span>Оперативная сводка</span><em>LIVE</em></h2>
         <div id="status"></div>
+      </section>
+
+      <section class="panel">
+        <h2><span>Контракты</span><small>ПРИНЯТЬ → АВАНС</small></h2>
+        <div id="contracts"></div>
+      </section>
+
+      <section class="panel">
+        <h2><span>Кадры</span><small>НАЙМ</small></h2>
+        <div id="hire"></div>
       </section>
 
       <section id="issues-panel" class="panel issues-panel" hidden>

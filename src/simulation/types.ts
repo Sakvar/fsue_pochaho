@@ -4,8 +4,9 @@ export type RoomId = 'warehouse' | 'cutting' | 'assembly' | 'admin' | 'corridor'
 export type Skill = 'logistics' | 'machining' | 'assembly' | 'mechanics' | 'quality';
 export type ShiftId = 'day' | 'night' | 'off';
 export type EmployeeAvailability = 'available' | 'resting' | 'sick' | 'absent';
-export type TraitId = 'old-hand' | 'strict' | 'tireless' | 'nervous';
+export type TraitId = 'old-hand' | 'strict' | 'tireless' | 'nervous' | 'young-specialist' | 'old-timer';
 export type WorkPost = 'none' | 'cutter' | 'bench' | 'quality' | 'logistics';
+export type ContractStatus = 'offered' | 'active' | 'completed' | 'failed' | 'expired';
 
 export type TaskType =
   | 'haul-steel'
@@ -65,7 +66,7 @@ export interface Employee {
   role: string;
   position: Position;
   skills: Partial<Record<Skill, number>>;
-  skillXp: Partial<Record<Skill, number>>;
+  salary: number;
   energy: number;
   morale: number;
   stress: number;
@@ -81,6 +82,17 @@ export interface Employee {
   path: Position[];
   moveProgress: number;
   workRemaining: number;
+}
+
+export interface Candidate {
+  id: string;
+  name: string;
+  role: string;
+  skills: Partial<Record<Skill, number>>;
+  traits: TraitId[];
+  salary: number;
+  hireCost: number;
+  preferredPost: WorkPost;
 }
 
 export interface ServiceRecord {
@@ -99,6 +111,9 @@ export interface Machine {
   condition: number;
   operational: boolean;
   hoursSinceService: number;
+  /** Wear multiplier; lower after reliability upgrade. */
+  wearMod: number;
+  upgraded?: boolean;
   serviceLog: ServiceRecord[];
 }
 
@@ -123,11 +138,30 @@ export interface QualityQueues {
   inspectedProduct: Array<'good' | 'hidden'>;
 }
 
+/** Active production target driven by an accepted contract (or idle). */
 export interface ProductionOrder {
+  contractId?: string;
+  title: string;
   targetProducts: number;
   completedProducts: number;
   dueDay: number;
-  status: 'active' | 'completed' | 'failed';
+  status: 'idle' | 'active' | 'completed' | 'failed';
+  advance: number;
+  completionPay: number;
+  grant: number;
+  failPenalty: number;
+}
+
+export interface Contract {
+  id: string;
+  title: string;
+  targetProducts: number;
+  dueDays: number;
+  advance: number;
+  completionPay: number;
+  grant: number;
+  failPenalty: number;
+  status: ContractStatus;
 }
 
 export interface Task {
@@ -146,7 +180,7 @@ export interface Task {
 }
 
 export interface ProductionIssue {
-  code: 'materials' | 'specialist' | 'route' | 'machine' | 'deadline' | 'fatigue' | 'absence' | 'shift' | 'parts' | 'quality';
+  code: 'materials' | 'specialist' | 'route' | 'machine' | 'deadline' | 'fatigue' | 'absence' | 'shift' | 'parts' | 'quality' | 'funds';
   message: string;
 }
 
@@ -157,10 +191,13 @@ export interface WorldState {
   mapVersion: number;
   facilities: FacilityPositions;
   employees: Employee[];
+  hirePool: Candidate[];
   machines: Machine[];
   tasks: Task[];
   inventory: Inventory;
   qualityQueues: QualityQueues;
+  funds: number;
+  contracts: Contract[];
   order: ProductionOrder;
   qualityChecks: number;
   reputation: number;
@@ -169,6 +206,8 @@ export interface WorldState {
   rngState: number;
   schedule: ShiftSchedule;
   lastPeopleDay: number;
+  nextEmployeeId: number;
+  nextContractOffer: number;
   timeMinutes: number;
   speed: number;
   paused: boolean;

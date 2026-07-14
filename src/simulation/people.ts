@@ -1,8 +1,8 @@
 import { TRAITS } from '../content/traits';
+import { processDailyPayroll } from './economy';
 import type {
   Employee,
   ShiftId,
-  Skill,
   Task,
   TraitId,
   WorkPost,
@@ -10,8 +10,6 @@ import type {
 } from './types';
 
 const DAY_MINUTES = 24 * 60;
-const XP_PER_LEVEL = 100;
-const MAX_SKILL = 5;
 
 export function minuteOfDay(world: WorldState): number {
   return Math.floor(world.timeMinutes % DAY_MINUTES);
@@ -62,7 +60,7 @@ export function computeWorkSpeed(employee: Employee, task: Task): number {
     speed *= TRAITS[trait].workSpeedMod;
   }
 
-  return clamp(speed, 0.4, 1.45);
+  return clamp(speed, 0.35, 1.45);
 }
 
 export function employeeBlockReason(employee: Employee, world: WorldState): string | undefined {
@@ -72,7 +70,7 @@ export function employeeBlockReason(employee: Employee, world: WorldState): stri
   if (!isOnShift(employee, world)) return 'Вне смены';
   if (employee.availability === 'resting') return 'Отдыхает';
   if (employee.energy <= 5) return 'Нет сил';
-  if (employee.stress >= 95) return 'На пределе, нужен отдых';
+  if (employee.stress >= 95) return 'На пределе';
   return undefined;
 }
 
@@ -80,12 +78,16 @@ export function scoreEmployeeForTask(employee: Employee, task: Task, world: Worl
   const skill = task.requiredSkill ? employee.skills[task.requiredSkill] ?? 0 : 1;
   const distance = Math.abs(employee.position.x - task.source.x) + Math.abs(employee.position.y - task.source.y);
   const postBonus = employee.assignedPost !== 'none' && employee.assignedPost === postForTask(task) ? 15 : 0;
-  return skill * 10 + employee.energy * 0.05 + employee.morale * 0.02 - employee.stress * 0.03 + postBonus - distance;
+  let score = skill * 10 + employee.energy * 0.05 + employee.morale * 0.02 - employee.stress * 0.03 + postBonus - distance;
+  for (const trait of employee.traits) {
+    score *= TRAITS[trait].taskScoreMod;
+  }
+  return score;
 }
 
 export function updatePeopleSystems(world: WorldState, scaledDelta: number): void {
   recoverFromIllness(world);
-  checkDailyIllness(world);
+  checkDailyPeopleEvents(world);
 
   for (const employee of world.employees) {
     if (employee.availability === 'sick' || employee.availability === 'absent') continue;
@@ -106,24 +108,6 @@ export function applyActivityFatigue(employee: Employee, activity: 'moving' | 'w
     employee.energy = Math.max(0, employee.energy - scaledDelta * 0.03 * drainMod);
     employee.stress = Math.min(100, employee.stress + scaledDelta * 0.012 * stressMod);
   }
-}
-
-export function grantSkillXp(world: WorldState, employee: Employee, skill: Skill | undefined, amount: number): void {
-  if (!skill || amount <= 0) return;
-
-  const currentSkill = employee.skills[skill] ?? 0;
-  if (currentSkill >= MAX_SKILL) return;
-
-  const xp = (employee.skillXp[skill] ?? 0) + amount;
-  if (xp < XP_PER_LEVEL) {
-    employee.skillXp[skill] = xp;
-    return;
-  }
-
-  employee.skills[skill] = currentSkill + 1;
-  employee.skillXp[skill] = xp - XP_PER_LEVEL;
-  employee.morale = Math.min(100, employee.morale + 4);
-  addPeopleLog(world, `${employee.name} повысил(а) квалификацию: ${skillLabel(skill)} → ${employee.skills[skill]}.`);
 }
 
 export function setEmployeeShift(world: WorldState, employeeId: string, shiftId: ShiftId): boolean {
@@ -174,26 +158,6 @@ export function assignEmployeeToPost(world: WorldState, employeeId: string, post
   return true;
 }
 
-export function sendEmployeeToRest(world: WorldState, employeeId: string): boolean {
-  const employee = world.employees.find((item) => item.id === employeeId);
-  if (!employee || employee.availability === 'sick') return false;
-
-  if (employee.currentTaskId) {
-    const task = world.tasks.find((item) => item.id === employee.currentTaskId);
-    if (task && !['completed', 'failed'].includes(task.state)) {
-      task.state = 'queued';
-      task.assignedEmployeeId = undefined;
-      task.blockedReason = undefined;
-    }
-    releaseEmployeeLocal(employee);
-  }
-
-  employee.availability = 'resting';
-  employee.status = 'idle';
-  addPeopleLog(world, `${employee.name} отправлен(а) на отдых директором.`);
-  return true;
-}
-
 function updateIdleEmployee(world: WorldState, employee: Employee, scaledDelta: number): void {
   const needsRest = employee.energy < 22 || employee.stress >= 88 || employee.availability === 'resting' || !isOnShift(employee, world);
 
@@ -231,13 +195,15 @@ function recoverFromIllness(world: WorldState): void {
   }
 }
 
-function checkDailyIllness(world: WorldState): void {
+function checkDailyPeopleEvents(world: WorldState): void {
   const day = Math.floor(world.timeMinutes / DAY_MINUTES) + 1;
   if (day <= world.lastPeopleDay) return;
   world.lastPeopleDay = day;
 
+  processDailyPayroll(world);
+
   for (const employee of world.employees) {
-    if (employee.availability === 'sick') continue;
+    if (employee.availability === 'sick' || employee.availability === 'absent') continue;
 
     const risk = employee.stress * 0.35 + (100 - employee.energy) * 0.2 + (100 - employee.health) * 0.25;
     const chance = Math.min(35, Math.max(0, Math.floor(risk - 40)));
@@ -290,16 +256,6 @@ function hashDayEmployee(day: number, employeeId: string): number {
     hash = (hash * 31 + employeeId.charCodeAt(i)) % 10007;
   }
   return hash;
-}
-
-function skillLabel(skill: Skill): string {
-  return {
-    logistics: 'логистика',
-    machining: 'станки',
-    assembly: 'сборка',
-    mechanics: 'механика',
-    quality: 'ОТК',
-  }[skill];
 }
 
 function shiftLabel(shiftId: ShiftId): string {

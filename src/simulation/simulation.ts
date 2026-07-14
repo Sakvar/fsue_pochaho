@@ -1,4 +1,5 @@
 import { PRODUCTION_TASKS, type TaskRule } from '../content/productionRules';
+import { settleActiveContract } from './contracts';
 import { repairBlockedReason, serviceBlockedReason } from './equipment';
 import { findPath, samePosition } from './pathfinding';
 import {
@@ -6,12 +7,10 @@ import {
   computeWorkSpeed,
   currentShiftPeriod,
   employeeBlockReason,
-  grantSkillXp,
   postForTask,
   scoreEmployeeForTask,
   updatePeopleSystems,
 } from './people';
-import { adjustReputation, reputationLabel } from './quality';
 import type { Employee, Machine, ProductionIssue, Task, WorldState } from './types';
 
 export {
@@ -21,10 +20,12 @@ export {
   isOnShift,
   makeSick,
   postCapacity,
-  sendEmployeeToRest,
   setEmployeeShift,
 } from './people';
 
+export { acceptContract, offeredContracts } from './contracts';
+export { orderSpareParts, upgradeCutterReliability } from './economy';
+export { hireCandidate } from './hiring';
 export { reputationLabel } from './quality';
 
 const MOVE_STEP_SECONDS = 0.18;
@@ -62,34 +63,11 @@ export function tickSimulation(world: WorldState, deltaSeconds: number): void {
   }
 }
 
-export function addProductionOrder(world: WorldState, amount: number): boolean {
-  if (world.order.status !== 'active') {
-    addLog(world, 'Изменить закрытый заказ нельзя: требуется оформить новый.');
-    return false;
-  }
-
-  const availableUnits = countPotentialProducts(world);
-  const newTarget = world.order.targetProducts + amount;
-  if (newTarget - world.order.completedProducts > availableUnits) {
-    addLog(world, `План не увеличен: для ${newTarget} корпусов не хватает листовой стали.`);
-    return false;
-  }
-
-  world.order.targetProducts += amount;
-  addLog(world, `Директор добавил заказ ещё на ${amount} корпуса.`);
-  return true;
-}
-
 export function damageCutter(world: WorldState): void {
   const cutter = getMachine(world, 'cutter');
   cutter.condition = 0;
   cutter.operational = false;
   addLog(world, 'Станок Р-17 остановлен: характерный запах перегретого наследия.');
-}
-
-export function orderSpareParts(world: WorldState, amount = 2): void {
-  world.inventory.spareParts += amount;
-  addLog(world, `Снабжение выдало запчасти: +${amount} (всего ${world.inventory.spareParts}).`);
 }
 
 export function requestScrapInsteadOfRework(world: WorldState): boolean {
@@ -159,30 +137,9 @@ function updateOrderStatus(world: WorldState): void {
   if (world.order.status !== 'active') return;
 
   if (world.order.completedProducts >= world.order.targetProducts) {
-    world.order.status = 'completed';
-    if (world.shippedHiddenDefects > 0) {
-      adjustReputation(world, -5 * world.shippedHiddenDefects);
-      addLog(
-        world,
-        `Заказ выполнен, но ${world.shippedHiddenDefects} корпус(ов) ушли со скрытым браком. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
-      );
-    } else {
-      adjustReputation(world, 4);
-      addLog(
-        world,
-        `Заказ выполнен: сдано ${world.order.completedProducts} корпусов. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
-      );
-    }
+    settleActiveContract(world, 'completed');
   } else if (currentDay(world) > world.order.dueDay) {
-    world.order.status = 'failed';
-    adjustReputation(world, -12);
-    addLog(world, `Срок заказа сорван: сдано ${world.order.completedProducts} из ${world.order.targetProducts}. Репутация падает.`);
-    for (const task of world.tasks.filter((item) => !['completed', 'failed'].includes(item.state))) {
-      task.state = 'failed';
-      task.blockedReason = 'Заказ закрыт после срыва срока';
-      const employee = world.employees.find((item) => item.id === task.assignedEmployeeId);
-      if (employee) releaseEmployee(employee);
-    }
+    settleActiveContract(world, 'failed');
   }
 }
 
@@ -392,7 +349,6 @@ function completeTask(world: WorldState, employee: Employee, task: Task): void {
 
   const resultMessage = rule.complete(world, employee);
   task.state = 'completed';
-  grantSkillXp(world, employee, task.requiredSkill, Math.max(8, Math.round(task.duration * 4)));
   employee.morale = Math.min(100, employee.morale + 1.5);
   addLog(world, `${employee.name}: ${task.title.toLowerCase()}.`);
   if (resultMessage) addLog(world, resultMessage);
@@ -437,8 +393,11 @@ function countPotentialProducts(world: WorldState): number {
 }
 
 export function getProductionIssues(world: WorldState): ProductionIssue[] {
+  if (world.order.status === 'idle') {
+    return [{ code: 'deadline', message: 'Нет активного контракта — примите заказ в дирекции' }];
+  }
   if (world.order.status === 'completed') return [];
-  if (world.order.status === 'failed') return [{ code: 'deadline', message: 'Срок заказа сорван' }];
+  if (world.order.status === 'failed') return [{ code: 'deadline', message: 'Срок контракта сорван' }];
 
   const issues: ProductionIssue[] = [];
   const remaining = world.order.targetProducts - world.order.completedProducts;
@@ -470,6 +429,11 @@ export function getProductionIssues(world: WorldState): ProductionIssue[] {
 
   if (world.inventory.defectiveProduct > 0) {
     issues.push({ code: 'quality', message: `На ОТК брак: ${world.inventory.defectiveProduct} шт.` });
+  }
+
+  const payroll = world.employees.reduce((sum, employee) => sum + employee.salary, 0);
+  if (world.funds < payroll) {
+    issues.push({ code: 'funds', message: `Бюджет не покрывает зарплату (${Math.round(world.funds)} < ${payroll})` });
   }
 
   const resting = world.employees.filter((item) => item.availability === 'resting').length;

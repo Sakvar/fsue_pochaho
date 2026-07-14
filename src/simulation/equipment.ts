@@ -14,8 +14,9 @@ export function recordService(
 }
 
 export function applyMachineWear(machine: Machine, amount: number): void {
-  machine.condition = Math.max(0, machine.condition - amount);
-  machine.hoursSinceService += amount;
+  const wear = amount * (machine.wearMod ?? 1);
+  machine.condition = Math.max(0, machine.condition - wear);
+  machine.hoursSinceService += wear;
 }
 
 export function canServiceMachine(world: WorldState, kind: Machine['kind']): boolean {

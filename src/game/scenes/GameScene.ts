@@ -17,7 +17,7 @@ import { createInitialWorld } from '../../simulation/createInitialWorld';
 import { placeDoor, placeWall, removeStructure, setTileZone, toggleDoor } from '../../simulation/mapEditing';
 import { facilityAt, formatSize, machineAt } from '../../simulation/occupancy';
 import {
-  addProductionOrder,
+  acceptContract,
   assignEmployeeToPost,
   boostTaskPriority,
   cancelTask,
@@ -28,15 +28,17 @@ import {
   damageCutter,
   effectivePriority,
   getProductionIssues,
+  hireCandidate,
   isOnShift,
+  offeredContracts,
   orderSpareParts,
   postCapacity,
   replanBlockedWork,
   reputationLabel,
   requestScrapInsteadOfRework,
-  sendEmployeeToRest,
   setEmployeeShift,
   tickSimulation,
+  upgradeCutterReliability,
 } from '../../simulation/simulation';
 import type { Employee, Facility, Machine, Position, RoomId, ShiftId, Size, Task, WorkPost, WorldState, ZoneKind } from '../../simulation/types';
 
@@ -93,11 +95,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupDomControls(): void {
-    document.querySelector<HTMLButtonElement>('#btn-order')?.addEventListener('click', () => {
-      addProductionOrder(this.world, 3);
-      this.updateHud(true);
-    });
-
     document.querySelector<HTMLButtonElement>('#btn-break')?.addEventListener('click', () => {
       damageCutter(this.world);
       this.updateHud(true);
@@ -105,6 +102,11 @@ export class GameScene extends Phaser.Scene {
 
     document.querySelector<HTMLButtonElement>('#btn-parts')?.addEventListener('click', () => {
       orderSpareParts(this.world, 2);
+      this.updateHud(true);
+    });
+
+    document.querySelector<HTMLButtonElement>('#btn-upgrade')?.addEventListener('click', () => {
+      upgradeCutterReliability(this.world);
       this.updateHud(true);
     });
 
@@ -168,6 +170,22 @@ export class GameScene extends Phaser.Scene {
         this.updateHud(true);
       });
 
+      document.querySelector<HTMLDivElement>('#contracts')?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const button = target?.closest<HTMLButtonElement>('button[data-contract-id]');
+        if (!button?.dataset.contractId) return;
+        acceptContract(this.world, button.dataset.contractId);
+        this.updateHud(true);
+      });
+
+      document.querySelector<HTMLDivElement>('#hire')?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const button = target?.closest<HTMLButtonElement>('button[data-hire-id]');
+        if (!button?.dataset.hireId) return;
+        hireCandidate(this.world, button.dataset.hireId);
+        this.updateHud(true);
+      });
+
       document.querySelector<HTMLDivElement>('#selection')?.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
         const button = target?.closest<HTMLButtonElement>('button[data-staff-action]');
@@ -177,7 +195,6 @@ export class GameScene extends Phaser.Scene {
         const action = button.dataset.staffAction;
         if (!employeeId || !action) return;
 
-        if (action === 'rest') sendEmployeeToRest(this.world, employeeId);
         if (action === 'shift') {
           const shift = button.dataset.shift as ShiftId | undefined;
           if (shift) setEmployeeShift(this.world, employeeId, shift);
@@ -585,41 +602,59 @@ export class GameScene extends Phaser.Scene {
     const status = document.querySelector<HTMLDivElement>('#status');
     const tasks = document.querySelector<HTMLDivElement>('#tasks');
     const staff = document.querySelector<HTMLDivElement>('#staff');
+    const contracts = document.querySelector<HTMLDivElement>('#contracts');
+    const hire = document.querySelector<HTMLDivElement>('#hire');
     const log = document.querySelector<HTMLDivElement>('#log');
     const selection = document.querySelector<HTMLDivElement>('#selection');
     const pauseButton = document.querySelector<HTMLButtonElement>('#btn-pause');
     const speedButton = document.querySelector<HTMLButtonElement>('#btn-speed');
-    const orderButton = document.querySelector<HTMLButtonElement>('#btn-order');
+    const upgradeButton = document.querySelector<HTMLButtonElement>('#btn-upgrade');
     const issuesPanel = document.querySelector<HTMLElement>('#issues-panel');
     const issues = document.querySelector<HTMLDivElement>('#issues');
     const mapTitle = document.querySelector<HTMLElement>('.map-title small');
 
     if (pauseButton) pauseButton.textContent = this.world.paused ? 'Продолжить' : 'Пауза';
     if (speedButton) speedButton.textContent = `Скорость ×${this.world.speed}`;
-    if (orderButton) orderButton.disabled = this.world.order.status !== 'active';
+    const cutter = this.world.machines.find((machine) => machine.kind === 'cutter');
+    if (upgradeButton) upgradeButton.disabled = Boolean(cutter?.upgraded);
     if (mapTitle) {
       const period = currentShiftPeriod(this.world) === 'day' ? 'СМЕНА ДЕНЬ' : 'СМЕНА НОЧЬ';
       mapTitle.textContent = `КОРПУС 01 · ${period}`;
     }
 
     if (status) {
-      const cutter = this.world.machines.find((machine) => machine.kind === 'cutter');
-      const progress = Math.min(100, (this.world.order.completedProducts / this.world.order.targetProducts) * 100);
+      const order = this.world.order;
+      const progress = order.targetProducts > 0
+        ? Math.min(100, (order.completedProducts / order.targetProducts) * 100)
+        : 0;
       const orderState = {
+        idle: 'НЕТ КОНТРАКТА',
         active: 'В ПРОИЗВОДСТВЕ',
         completed: 'ВЫПОЛНЕН',
         failed: 'СРОК СОРВАН',
-      }[this.world.order.status];
+      }[order.status];
       const onDuty = this.world.employees.filter((item) => item.availability === 'available').length;
-      this.setHudHtml(status, 'status', `<div class="status-top"><div><div class="clock">${currentClock(this.world)}</div><div class="day">День ${currentDay(this.world)} · срок ${this.world.order.dueDay}</div></div></div>
-        <div class="order-state ${this.world.order.status}">${orderState}</div>
-        <div class="progress-meta"><span>ГОСЗАКАЗ · КОРПУСА</span><b>${this.world.order.completedProducts} / ${this.world.order.targetProducts}</b></div>
+      const dueLabel = order.status === 'active' ? ` · срок ${order.dueDay}` : '';
+      const progressMeta = order.status === 'idle'
+        ? `<div class="progress-meta"><span>КОНТРАКТ</span><b>—</b></div>`
+        : `<div class="progress-meta"><span>${order.title.toUpperCase()}</span><b>${order.completedProducts} / ${order.targetProducts}</b></div>`;
+      this.setHudHtml(status, 'status', `<div class="status-top"><div><div class="clock">${currentClock(this.world)}</div><div class="day">День ${currentDay(this.world)}${dueLabel}</div></div></div>
+        <div class="order-state ${order.status}">${orderState}</div>
+        ${progressMeta}
         <div class="progress"><i style="width:${progress}%"></i></div>
-        <div class="inventory"><span><b>${this.world.inventory.steelSheet}</b>листы</span><span><b>${this.world.inventory.cutBlank + this.world.inventory.blankAtBench}</b>заготовки</span><span><b>${this.world.inventory.defectiveProduct}</b>брак</span><span><b>${this.world.inventory.product}</b>склад</span></div>
-        <div class="inventory"><span><b>${this.world.inventory.spareParts}</b>запчасти</span><span><b>${this.world.inventory.scrap}</b>лом</span><span><b>${Math.round(this.world.reputation)}</b>репутация</span></div>
-        <div class="machine-state"><span>Р-17 «Ветеран»</span><b>${Math.round(cutter?.condition ?? 0)}% · ${cutter?.operational ? 'В РАБОТЕ' : 'АВАРИЯ'}</b></div>
+        <div class="inventory"><span><b>${Math.round(this.world.funds)}</b>бюджет</span><span><b>${this.world.inventory.steelSheet}</b>листы</span><span><b>${this.world.inventory.product}</b>склад</span></div>
+        <div class="inventory"><span><b>${this.world.inventory.spareParts}</b>запчасти</span><span><b>${this.world.inventory.defectiveProduct}</b>брак</span><span><b>${Math.round(this.world.reputation)}</b>репутация</span></div>
+        <div class="machine-state"><span>Р-17 «Ветеран»</span><b>${Math.round(cutter?.condition ?? 0)}% · ${cutter?.operational ? 'В РАБОТЕ' : 'АВАРИЯ'}${cutter?.upgraded ? ' · МОД' : ''}</b></div>
         <div class="machine-state"><span>Качество</span><b>${reputationLabel(this.world.reputation)}</b></div>
         <div class="machine-state"><span>Личный состав</span><b>${onDuty}/${this.world.employees.length} на месте</b></div>`);
+    }
+
+    if (contracts) {
+      this.setHudHtml(contracts, 'contracts', this.renderContractsPanel());
+    }
+
+    if (hire) {
+      this.setHudHtml(hire, 'hire', this.renderHirePanel());
     }
 
     const productionIssues = getProductionIssues(this.world);
@@ -650,6 +685,39 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private renderContractsPanel(): string {
+    if (this.world.order.status === 'active') {
+      return `<div class="offer"><b>Активен:</b> ${this.world.order.title}<div class="offer-meta">Сдача ${this.world.order.completedProducts}/${this.world.order.targetProducts} · день ${this.world.order.dueDay}</div></div>`;
+    }
+
+    const offers = offeredContracts(this.world);
+    if (offers.length === 0) {
+      return '<span class="muted">Нет предложений. Завтра, может быть, пришлют.</span>';
+    }
+
+    return offers.map((contract) => `<div class="offer">
+      <div class="offer-head"><b>${contract.title}</b><span>${contract.targetProducts} шт. / ${contract.dueDays} дн.</span></div>
+      <div class="offer-meta">аванс ${contract.advance} · сдача ${contract.completionPay} · грант ${contract.grant}</div>
+      <button type="button" data-contract-id="${contract.id}">Принять</button>
+    </div>`).join('');
+  }
+
+  private renderHirePanel(): string {
+    if (this.world.hirePool.length === 0) {
+      return '<span class="muted">Кандидатов нет. Кадры молчат.</span>';
+    }
+
+    return this.world.hirePool.map((candidate) => {
+      const traits = candidate.traits.map((trait) => TRAIT_LABELS[trait]).join(', ') || 'обычный';
+      const canAfford = this.world.funds >= candidate.hireCost;
+      return `<div class="offer">
+        <div class="offer-head"><b>${candidate.name}</b><span>${candidate.hireCost} · ${candidate.salary}/д</span></div>
+        <div class="offer-meta">${candidate.role} · ${traits}</div>
+        <button type="button" data-hire-id="${candidate.id}" ${canAfford ? '' : 'disabled'}>Нанять</button>
+      </div>`;
+    }).join('');
+  }
+
   private setHudHtml(element: HTMLElement, key: string, html: string): void {
     if (this.hudCache[key] === html) return;
     this.hudCache[key] = html;
@@ -664,7 +732,9 @@ export class GameScene extends Phaser.Scene {
         employee.availability,
         employee.shiftId,
         employee.assignedPost,
+        employee.salary,
         Math.round(employee.energy),
+        Math.round(employee.morale),
         selected,
       ].join('/');
     }).join('|');
@@ -740,10 +810,11 @@ export class GameScene extends Phaser.Scene {
     const selected = this.isEmployeeSelected(employee);
     const energy = Math.round(employee.energy);
     const energyClass = energy > 55 ? 'ok' : energy > 28 ? 'warn' : 'crit';
+    const traits = employee.traits.map((trait) => TRAIT_LABELS[trait]).filter(Boolean).slice(0, 2).join(', ');
     return `<div class="staff-row${selected ? ' selected' : ''}" data-employee-id="${employee.id}">
       <div class="staff-main">
         <b>${employee.name}</b>
-        <span class="staff-meta">${AVAILABILITY_LABELS[employee.availability]} · ${SHIFT_LABELS[employee.shiftId]} · ${POST_LABELS[employee.assignedPost]}</span>
+        <span class="staff-meta">${POST_LABELS[employee.assignedPost]} · ${employee.salary}/д${traits ? ` · ${traits}` : ''}</span>
       </div>
       <div class="staff-energy" title="Энергия ${energy}%">
         <i class="${energyClass}" style="width:${Math.max(4, energy)}%"></i>
@@ -774,7 +845,6 @@ export class GameScene extends Phaser.Scene {
     ];
 
     return `<div class="inspector-controls">
-      <button type="button" data-staff-action="rest" data-employee-id="${employee.id}">Отдых</button>
       <div class="control-group">
         ${shiftButtons.map(([shift, label]) =>
           `<button type="button" class="${employee.shiftId === shift ? 'active' : ''}" data-staff-action="shift" data-shift="${shift}" data-employee-id="${employee.id}">${label}</button>`).join('')}
@@ -817,7 +887,7 @@ export class GameScene extends Phaser.Scene {
       const traits = employee.traits.map((trait) => TRAIT_LABELS[trait]).join(', ') || 'нет';
       return `<div class="inspector-card">
         <div class="inspector-head"><b>${employee.name}</b><span>${employee.role}</span></div>
-        <div class="inspector-line">${SHIFT_LABELS[employee.shiftId]} · ${AVAILABILITY_LABELS[employee.availability]}${onShift ? '' : ' · вне смены'}</div>
+        <div class="inspector-line">${SHIFT_LABELS[employee.shiftId]} · ${AVAILABILITY_LABELS[employee.availability]}${onShift ? '' : ' · вне смены'} · оклад ${employee.salary}/д</div>
         <div class="inspector-line">Пост: ${POST_LABELS[employee.assignedPost]} · ${this.employeeActionLabel(employee, onShift)}</div>
         <div class="vitals">
           ${this.renderVitalBar('Энергия', employee.energy, 'energy')}
@@ -840,8 +910,8 @@ export class GameScene extends Phaser.Scene {
       const lastService = machine.serviceLog[0];
       lines.push(
         `<div class="inspector-line"><b>${machine.name}</b></div>`,
-        `<div class="inspector-line">${MACHINE_LABELS[machine.kind]} · ${formatSize(machine.size)} · ${Math.round(machine.condition)}% · ${machine.operational ? 'в работе' : 'авария'}</div>`,
-        `<div class="inspector-line">С ТО: ${Math.round(machine.hoursSinceService)} усл. ч.</div>`,
+        `<div class="inspector-line">${MACHINE_LABELS[machine.kind]} · ${formatSize(machine.size)} · ${Math.round(machine.condition)}% · ${machine.operational ? 'в работе' : 'авария'}${machine.upgraded ? ' · модерн.' : ''}</div>`,
+        `<div class="inspector-line">С ТО: ${Math.round(machine.hoursSinceService)} усл. ч. · износ ×${machine.wearMod.toFixed(2)}</div>`,
       );
       if (lastService) {
         lines.push(

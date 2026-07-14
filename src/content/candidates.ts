@@ -1,0 +1,55 @@
+import type { Candidate } from '../simulation/types';
+
+/** Static hire pool entries (copied into world; hired ids are removed). */
+export const CANDIDATE_POOL: Candidate[] = [
+  {
+    id: 'cand-artyom',
+    name: 'Артём',
+    role: 'молодой специалист',
+    skills: { machining: 4, logistics: 2, assembly: 2 },
+    traits: ['young-specialist'],
+    salary: 28,
+    hireCost: 90,
+    preferredPost: 'cutter',
+  },
+  {
+    id: 'cand-sofa',
+    name: 'Софья',
+    role: 'инженер ОТК',
+    skills: { quality: 4, assembly: 2, logistics: 1 },
+    traits: ['young-specialist', 'nervous'],
+    salary: 26,
+    hireCost: 85,
+    preferredPost: 'quality',
+  },
+  {
+    id: 'cand-petr',
+    name: 'Пётр Семёнович',
+    role: 'ветеран цеха',
+    skills: { machining: 5, mechanics: 4, assembly: 3, logistics: 2 },
+    traits: ['old-timer', 'old-hand'],
+    salary: 22,
+    hireCost: 40,
+    preferredPost: 'none',
+  },
+  {
+    id: 'cand-lyuda',
+    name: 'Людмила',
+    role: 'сборщик',
+    skills: { assembly: 4, logistics: 2 },
+    traits: [],
+    salary: 18,
+    hireCost: 55,
+    preferredPost: 'bench',
+  },
+  {
+    id: 'cand-kolya',
+    name: 'Николай',
+    role: 'кладовщик',
+    skills: { logistics: 4 },
+    traits: ['tireless'],
+    salary: 16,
+    hireCost: 45,
+    preferredPost: 'logistics',
+  },
+];

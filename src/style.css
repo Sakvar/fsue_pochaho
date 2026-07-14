@@ -186,11 +186,18 @@ h2 em { color:#cdbb60; font:normal 9px ui-monospace, monospace; }
 .day { color:#858274; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
 .progress-meta { display:flex; justify-content:space-between; margin-top:12px; color:#a8a494; font-size:11px; }
 .order-state { float:right; margin-top:-27px; padding:3px 6px; border:1px solid #6f6b54; color:#c9bb70; font:9px ui-monospace, monospace; letter-spacing:.08em; }
+.order-state.idle { border-color:#5a5a52; color:#8a8778; }
 .order-state.completed { border-color:#53705b; color:#8db897; }
 .order-state.failed { border-color:#805044; color:#d38a75; }
+.offer { padding:8px 0; border-top:1px solid #34352e; }
+.offer:first-child { border-top:0; padding-top:0; }
+.offer-head { display:flex; justify-content:space-between; gap:8px; align-items:baseline; font-size:12px; }
+.offer-meta { margin:4px 0 8px; color:#8a8778; font-size:11px; }
+.offer button { width:100%; padding:7px 10px; font-size:11px; text-align:center; }
+.issue-funds { border-left-color:#a08a3c; }
 .progress { height:7px; margin:5px 0 10px; overflow:hidden; background:#151612; border:1px solid #3e3e35; }
 .progress i { display:block; height:100%; background:linear-gradient(90deg,#9b873a,#dbc865); }
-.inventory { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.inventory { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
 .inventory span { padding:6px 4px; color:#8f8c80; background:#1e1f1a; font-size:9px; text-align:center; text-transform:uppercase; }
 .inventory b { display:block; color:#dcd7c9; font:700 14px ui-monospace, monospace; }
 .machine-state { display:flex; justify-content:space-between; margin-top:8px; color:#9a978a; font-size:11px; }
