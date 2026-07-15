@@ -16,6 +16,7 @@ import {
 import { createInitialWorld } from '../../simulation/createInitialWorld';
 import { placeDoor, placeWall, removeStructure, setTileZone, toggleDoor } from '../../simulation/mapEditing';
 import { facilityAt, formatSize, machineAt } from '../../simulation/occupancy';
+import { loadWorld, saveWorld } from '../../simulation/persistence';
 import {
   acceptContract,
   assignEmployeeToPost,
@@ -55,6 +56,8 @@ export class GameScene extends Phaser.Scene {
   private animationTime = 0;
   private hudBound = false;
   private hudCache: Record<string, string> = {};
+  private toastTimer?: number;
+  private activePanel?: string;
 
   constructor() {
     super('GameScene');
@@ -74,6 +77,8 @@ export class GameScene extends Phaser.Scene {
       .setDepth(5)
       .setVisible(false);
     this.setupDomControls();
+    this.setupGameMenu();
+    this.setupKeyboardControls();
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       const tile = this.pointerToTile(pointer.x, pointer.y);
@@ -95,6 +100,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupDomControls(): void {
+    document.querySelector<HTMLButtonElement>('#btn-new')?.addEventListener('click', () => {
+      if (!window.confirm('Начать новую игру? Текущий прогресс будет заменён.')) return;
+      this.world = createInitialWorld();
+      this.resetSelection();
+      this.showToast('Новое предприятие принято под управление');
+      this.updateHud(true);
+    });
+
+    document.querySelector<HTMLButtonElement>('#btn-save')?.addEventListener('click', () => {
+      try {
+        saveWorld(this.world);
+        this.showToast('Игра сохранена');
+      } catch {
+        this.showToast('Не удалось сохранить игру');
+      }
+    });
+
+    document.querySelector<HTMLButtonElement>('#btn-load')?.addEventListener('click', () => {
+      try {
+        const saved = loadWorld();
+        if (!saved) {
+          this.showToast('Сохранение пока не создано');
+          return;
+        }
+        this.world = saved;
+        this.resetSelection();
+        this.showToast('Сохранение загружено');
+        this.updateHud(true);
+      } catch {
+        this.showToast('Сохранение повреждено или несовместимо');
+      }
+    });
+
     document.querySelector<HTMLButtonElement>('#btn-break')?.addEventListener('click', () => {
       damageCutter(this.world);
       this.updateHud(true);
@@ -139,6 +177,7 @@ export class GameScene extends Phaser.Scene {
         this.activeTool = tool;
         this.updateToolButtons();
         this.updateMapHint();
+        if (window.matchMedia('(max-width: 760px)').matches) this.closePanel();
       });
     });
 
@@ -166,6 +205,7 @@ export class GameScene extends Phaser.Scene {
         if (employee) {
           this.selectedEmployeeId = employee.id;
           this.selectedTile = { ...employee.position };
+          this.closePanel();
         }
         this.updateHud(true);
       });
@@ -210,6 +250,127 @@ export class GameScene extends Phaser.Scene {
 
     this.updateToolButtons();
     this.updateMapHint();
+  }
+
+  private setupGameMenu(): void {
+    document.querySelectorAll<HTMLButtonElement>('button[data-panel]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!button.dataset.panel) return;
+        if (this.activePanel === button.dataset.panel) this.closePanel();
+        else this.openPanel(button.dataset.panel);
+      });
+    });
+    document.querySelector<HTMLElement>('#game-panels')?.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement | null)?.closest('[data-close-panel]')) this.closePanel();
+    });
+    document.querySelector<HTMLButtonElement>('[data-close-selection]')?.addEventListener('click', () => {
+      this.resetSelection();
+      this.updateHud(true);
+    });
+    window.addEventListener('resize', () => this.positionActivePanel());
+  }
+
+  private openPanel(panel: string): void {
+    this.activePanel = panel;
+    document.querySelector<HTMLElement>('.command-console')?.classList.toggle('panel-open', panel !== 'system');
+    document.querySelectorAll<HTMLElement>('[data-panel-content]').forEach((element) => {
+      element.classList.toggle('open', element.dataset.panelContent === panel);
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach((button) => {
+      const active = button.dataset.panel === panel;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    this.positionActivePanel();
+  }
+
+  private positionActivePanel(): void {
+    if (!this.activePanel || this.activePanel === 'system') return;
+    const button = document.querySelector<HTMLButtonElement>(`.game-menu button[data-panel="${this.activePanel}"]`);
+    const panels = document.querySelector<HTMLElement>('#game-panels');
+    const panel = document.querySelector<HTMLElement>(`[data-panel-content="${this.activePanel}"]`);
+    const info = document.querySelector<HTMLElement>('#selection-drawer');
+    if (!button || !panels || !panel || !info) return;
+    const buttonRect = button.getBoundingClientRect();
+    const panelsRect = panels.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const infoRect = info.getBoundingClientRect();
+    const minimumCenter = infoRect.right + 8 + panelRect.width / 2;
+    const maximumCenter = window.innerWidth - 10 - panelRect.width / 2;
+    const buttonCenter = buttonRect.left + buttonRect.width / 2;
+    const isNarrow = window.matchMedia('(max-width: 760px)').matches;
+    const narrowMinimumCenter = 6 + panelRect.width / 2;
+    const narrowMaximumCenter = window.innerWidth - 6 - panelRect.width / 2;
+    const panelCenter = isNarrow
+      ? Math.max(narrowMinimumCenter, Math.min(narrowMaximumCenter, buttonCenter))
+      : Math.max(minimumCenter, Math.min(maximumCenter, buttonCenter));
+    const anchorTop = buttonRect.top;
+    panel.style.left = `${panelCenter - panelsRect.left}px`;
+    panel.style.bottom = `${panelsRect.bottom - anchorTop + 6}px`;
+  }
+
+  private closePanel(): void {
+    this.activePanel = undefined;
+    document.querySelector<HTMLElement>('.command-console')?.classList.remove('panel-open');
+    document.querySelectorAll<HTMLElement>('[data-panel-content]').forEach((element) => element.classList.remove('open'));
+    document.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach((button) => {
+      button.classList.remove('active');
+      button.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  private setupKeyboardControls(): void {
+    this.input.keyboard?.on('keydown-SPACE', (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.world.paused = !this.world.paused;
+      this.showToast(this.world.paused ? 'Производство приостановлено' : 'Смена продолжена');
+      this.updateHud(true);
+    });
+    this.input.keyboard?.on('keydown-ONE', () => this.setSpeed(1));
+    this.input.keyboard?.on('keydown-TWO', () => this.setSpeed(3));
+    this.input.keyboard?.on('keydown-THREE', () => this.setSpeed(8));
+    this.input.keyboard?.on('keydown-R', () => {
+      replanBlockedWork(this.world);
+      this.showToast('Наряды перепланированы');
+      this.updateHud(true);
+    });
+    this.input.keyboard?.on('keydown-ESC', () => {
+      if (this.activePanel) {
+        this.closePanel();
+        return;
+      }
+      this.resetSelection();
+      this.updateHud(true);
+    });
+  }
+
+  private resetSelection(): void {
+    this.activeTool = 'inspect';
+    this.selectedTile = undefined;
+    this.selectedEmployeeId = undefined;
+    this.updateToolButtons();
+    this.updateMapHint();
+  }
+
+  private setSpeed(speed: number): void {
+    this.world.speed = speed;
+    this.showToast(`Скорость производства ×${speed}`);
+    this.updateHud(true);
+  }
+
+  private showToast(message: string): void {
+    let toast = document.querySelector<HTMLDivElement>('#game-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'game-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.querySelector('#game-root')?.append(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('visible');
+    if (this.toastTimer) window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => toast?.classList.remove('visible'), 1800);
   }
 
   private applyTool(tile: Position): void {
@@ -612,14 +773,42 @@ export class GameScene extends Phaser.Scene {
     const issuesPanel = document.querySelector<HTMLElement>('#issues-panel');
     const issues = document.querySelector<HTMLDivElement>('#issues');
     const mapTitle = document.querySelector<HTMLElement>('.map-title small');
+    const onboarding = document.querySelector<HTMLDivElement>('#onboarding');
+    const topTime = document.querySelector<HTMLElement>('#top-time');
+    const topFunds = document.querySelector<HTMLElement>('#top-funds');
+    const topReputation = document.querySelector<HTMLElement>('#top-reputation');
+    const topOrder = document.querySelector<HTMLElement>('#top-order');
 
-    if (pauseButton) pauseButton.textContent = this.world.paused ? 'Продолжить' : 'Пауза';
-    if (speedButton) speedButton.textContent = `Скорость ×${this.world.speed}`;
+    if (pauseButton) {
+      pauseButton.textContent = this.world.paused ? '▶' : 'Ⅱ';
+      pauseButton.title = this.world.paused ? 'Продолжить (Space)' : 'Пауза (Space)';
+    }
+    if (speedButton) speedButton.textContent = `×${this.world.speed}`;
     const cutter = this.world.machines.find((machine) => machine.kind === 'cutter');
     if (upgradeButton) upgradeButton.disabled = Boolean(cutter?.upgraded);
     if (mapTitle) {
       const period = currentShiftPeriod(this.world) === 'day' ? 'СМЕНА ДЕНЬ' : 'СМЕНА НОЧЬ';
       mapTitle.textContent = `КОРПУС 01 · ${period}`;
+    }
+    if (topTime) topTime.textContent = `${currentDay(this.world)} · ${currentClock(this.world)}`;
+    if (topFunds) topFunds.textContent = `${Math.round(this.world.funds)}`;
+    if (topReputation) topReputation.textContent = `${Math.round(this.world.reputation)}`;
+    if (topOrder) {
+      const order = this.world.order;
+      topOrder.textContent = order.status === 'idle'
+        ? 'Выберите контракт'
+        : `${order.title} · ${order.completedProducts}/${order.targetProducts}`;
+    }
+
+    if (onboarding) {
+      const order = this.world.order;
+      const guidance = {
+        idle: ['Первая цель', 'Запустите производство', 'Выберите контракт: аванс даст заводу деньги на зарплаты и ремонт.'],
+        active: ['В работе', `Выпустите ${order.targetProducts} изделий`, `Готово ${order.completedProducts}/${order.targetProducts}. Следите за простоями, качеством и состоянием Р-17.`],
+        completed: ['Выполнено', 'Первый контракт закрыт', 'Репутация открывает более выгодные заказы. Оцените состояние цеха и берите следующий.'],
+        failed: ['Разбор', 'Срок контракта сорван', 'Устраните причины простоя, восстановите смену и выберите посильный следующий заказ.'],
+      }[order.status];
+      this.setHudHtml(onboarding, 'onboarding', `<span class="onboarding-step">${guidance[0]}</span><div><b>${guidance[1]}</b><small>${guidance[2]}</small></div>`);
     }
 
     if (status) {
@@ -683,6 +872,10 @@ export class GameScene extends Phaser.Scene {
     if (selection) {
       this.setHudHtml(selection, 'selection', this.renderSelection());
     }
+    document.querySelector<HTMLElement>('#selection-drawer')?.classList.toggle(
+      'has-selection',
+      Boolean(this.selectedEmployeeId || (this.selectedTile && this.activeTool === 'inspect')),
+    );
   }
 
   private renderContractsPanel(): string {
@@ -750,13 +943,15 @@ export class GameScene extends Phaser.Scene {
 
   private updateToolButtons(): void {
     document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((button) => {
-      button.classList.toggle('active', button.dataset.tool === this.activeTool);
+      const active = button.dataset.tool === this.activeTool;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
   }
 
   private updateMapHint(): void {
     const hint = document.querySelector<HTMLDivElement>('.map-hint');
-    if (hint) hint.textContent = `ЛКМ · ${BUILD_TOOL_LABELS[this.activeTool].toUpperCase()}`;
+    if (hint) hint.textContent = `ЛКМ · ${BUILD_TOOL_LABELS[this.activeTool].toUpperCase()}  ·  ПРОБЕЛ ПАУЗА  ·  1–3 СКОРОСТЬ`;
   }
 
   private get originX(): number { return Math.max(24, Math.floor((this.scale.width - this.world.width * TILE_SIZE) / 2)); }
@@ -864,7 +1059,16 @@ export class GameScene extends Phaser.Scene {
 
   private renderSelection(): string {
     if (!this.selectedTile && !this.selectedEmployeeId) {
-      return '<span class="muted">Кликни по клетке или сотруднику.</span>';
+      const order = this.world.order;
+      const issues = getProductionIssues(this.world);
+      const goal = order.status === 'idle'
+        ? 'Примите контракт, чтобы запустить цех.'
+        : `${order.title}: ${order.completedProducts}/${order.targetProducts}`;
+      return `<div class="info-overview">
+        <div><b>${order.status === 'active' ? 'Производство идёт' : order.status === 'completed' ? 'Контракт выполнен' : 'Предприятие ожидает решения'}</b><span>${goal}</span></div>
+        <div class="info-stats"><span><b>${Math.round(this.world.funds)}</b> бюджет</span><span><b>${this.world.inventory.spareParts}</b> запчасти</span><span><b>${this.world.employees.length}</b> сотрудников</span></div>
+        <small>${issues[0]?.message ?? 'Критических проблем нет. Выберите объект на карте для подробностей.'}</small>
+      </div>`;
     }
 
     const employee = this.selectedEmployeeId

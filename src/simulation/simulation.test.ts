@@ -5,6 +5,8 @@ import { processDailyPayroll, upgradeCutterReliability } from './economy';
 import { placeWall, removeStructure, setTileZone, toggleDoor } from './mapEditing';
 import { computeWorkSpeed, makeSick } from './people';
 import { computeBlankQuality, computeDefectRisk, inspectProduct } from './quality';
+import { makeOffer, refreshContractOffers } from './contracts';
+import { CONTRACT_TEMPLATES } from '../content/contracts';
 import {
   acceptContract,
   assignEmployeeToPost,
@@ -594,10 +596,43 @@ describe('factory simulation prototype', () => {
     expect(strictCatches).toBeGreaterThan(weakCatches);
   });
 
-  it('lets the director change shifts', () => {
+  it('locks prestigious contracts until quality reputation is earned', () => {
     const world = createInitialWorld();
-    const nina = world.employees.find((item) => item.id === 'emp-nina')!;
-    expect(setEmployeeShift(world, nina.id, 'night')).toBe(true);
-    expect(nina.shiftId).toBe('night');
+    const prestigious = CONTRACT_TEMPLATES.find((item) => item.id === 'corp-medical')!;
+    const offer = makeOffer(prestigious, 99);
+    world.contracts.push(offer);
+
+    expect(acceptContract(world, offer.id)).toBe(false);
+    expect(world.order.status).toBe('idle');
+    expect(world.log[0]).toContain('требует репутацию');
+
+    world.reputation = prestigious.reputationRequired!;
+    expect(acceptContract(world, offer.id)).toBe(true);
+  });
+
+  it('only refreshes offers that the factory reputation has unlocked', () => {
+    const world = createInitialWorld();
+    world.contracts = [];
+    world.nextContractOffer = 0;
+    world.reputation = 61;
+    refreshContractOffers(world, 10);
+
+    expect(world.contracts.length).toBeGreaterThan(0);
+    expect(world.contracts.every((item) => (item.reputationRequired ?? 0) <= world.reputation)).toBe(true);
+    expect(world.contracts.some((item) => item.title.includes('Министерский'))).toBe(false);
+  });
+
+  it('awards a premium for a flawless early urgent delivery', () => {
+    const world = createInitialWorld();
+    const urgent = world.contracts.find((item) => item.title.includes('Срочная'))!;
+    const fundsBefore = world.funds;
+    expect(acceptContract(world, urgent.id)).toBe(true);
+    world.order.completedProducts = world.order.targetProducts;
+    tickSimulation(world, 0.25);
+
+    const expected = fundsBefore + urgent.advance + urgent.completionPay + urgent.grant +
+      urgent.flawlessBonus! + urgent.earlyBonus!;
+    expect(world.funds).toBe(expected);
+    expect(world.log[0]).toContain('премия');
   });
 });

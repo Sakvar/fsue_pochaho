@@ -7,4 +7,30 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    target: 'es2022',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          phaser: ['phaser'],
+        },
+      },
+    },
+  },
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'html'],
+      reportsDirectory: 'coverage',
+      include: ['src/simulation/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/simulation/types.ts'],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        statements: 70,
+        branches: 60,
+      },
+    },
+  },
 });

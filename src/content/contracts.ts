@@ -7,6 +7,13 @@ export interface ContractOfferTemplate {
   completionPay: number;
   grant: number;
   failPenalty: number;
+  /** Minimum quality reputation needed before this customer sends an offer. */
+  reputationRequired?: number;
+  /** Extra pay for shipping without hidden defects. */
+  flawlessBonus?: number;
+  /** Extra pay when at least this many whole days remain. */
+  earlyBonus?: number;
+  earlyDaysRemaining?: number;
 }
 
 /** Fixed pool of contract templates; offers are drawn from here. */
@@ -40,6 +47,9 @@ export const CONTRACT_TEMPLATES: ContractOfferTemplate[] = [
     completionPay: 200,
     grant: 40,
     failPenalty: 100,
+    flawlessBonus: 70,
+    earlyBonus: 60,
+    earlyDaysRemaining: 4,
   },
   {
     id: 'corp-ministry',
@@ -50,6 +60,8 @@ export const CONTRACT_TEMPLATES: ContractOfferTemplate[] = [
     completionPay: 280,
     grant: 150,
     failPenalty: 140,
+    reputationRequired: 62,
+    flawlessBonus: 120,
   },
   {
     id: 'corp-repair-kit',
@@ -60,6 +72,22 @@ export const CONTRACT_TEMPLATES: ContractOfferTemplate[] = [
     completionPay: 420,
     grant: 80,
     failPenalty: 160,
+    reputationRequired: 70,
+    flawlessBonus: 160,
+    earlyBonus: 100,
+    earlyDaysRemaining: 8,
+  },
+  {
+    id: 'corp-medical',
+    title: 'Точная партия для медтехники',
+    targetProducts: 4,
+    dueDays: 22,
+    advance: 260,
+    completionPay: 390,
+    grant: 120,
+    failPenalty: 180,
+    reputationRequired: 78,
+    flawlessBonus: 240,
   },
 ];
 

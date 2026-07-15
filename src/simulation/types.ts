@@ -150,6 +150,9 @@ export interface ProductionOrder {
   completionPay: number;
   grant: number;
   failPenalty: number;
+  flawlessBonus?: number;
+  earlyBonus?: number;
+  earlyDaysRemaining?: number;
 }
 
 export interface Contract {
@@ -161,6 +164,10 @@ export interface Contract {
   completionPay: number;
   grant: number;
   failPenalty: number;
+  reputationRequired?: number;
+  flawlessBonus?: number;
+  earlyBonus?: number;
+  earlyDaysRemaining?: number;
   status: ContractStatus;
 }
 

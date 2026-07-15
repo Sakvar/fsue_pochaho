@@ -19,6 +19,10 @@ export function acceptContract(world: WorldState, contractId: string): boolean {
     addEconomyLog(world, 'Контракт не найден или уже недоступен.');
     return false;
   }
+  if (world.reputation < (contract.reputationRequired ?? 0)) {
+    addEconomyLog(world, `Заказчик требует репутацию ${contract.reputationRequired}; сейчас ${Math.round(world.reputation)}.`);
+    return false;
+  }
 
   const day = currentDay(world);
   contract.status = 'active';
@@ -39,6 +43,9 @@ export function acceptContract(world: WorldState, contractId: string): boolean {
     completionPay: contract.completionPay,
     grant: contract.grant,
     failPenalty: contract.failPenalty,
+    flawlessBonus: contract.flawlessBonus,
+    earlyBonus: contract.earlyBonus,
+    earlyDaysRemaining: contract.earlyDaysRemaining,
   };
   world.shippedHiddenDefects = 0;
   world.funds += contract.advance;
@@ -55,14 +62,18 @@ export function refreshContractOffers(world: WorldState, count = 2): void {
   if (needed === 0) return;
 
   const usedTitles = new Set(world.contracts.map((item) => item.title));
-  const available = CONTRACT_TEMPLATES.filter((template) => !usedTitles.has(template.title));
-  const pool = available.length > 0 ? available : CONTRACT_TEMPLATES;
+  const unlocked = CONTRACT_TEMPLATES.filter((template) => world.reputation >= (template.reputationRequired ?? 0));
+  const available = unlocked.filter((template) => !usedTitles.has(template.title));
+  const pool = available.length > 0 ? available : unlocked;
 
-  for (let i = 0; i < needed; i += 1) {
+  if (pool.length === 0) return;
+
+  const offerCount = Math.min(needed, pool.length);
+  for (let i = 0; i < offerCount; i += 1) {
     const template = pool[(world.nextContractOffer + i) % pool.length];
     world.contracts.push(makeOffer(template, world.nextContractOffer + i));
   }
-  world.nextContractOffer += needed;
+  world.nextContractOffer += offerCount;
 }
 
 export function makeOffer(template: ContractOfferTemplate, index: number): Contract {
@@ -75,6 +86,10 @@ export function makeOffer(template: ContractOfferTemplate, index: number): Contr
     completionPay: template.completionPay,
     grant: template.grant,
     failPenalty: template.failPenalty,
+    reputationRequired: template.reputationRequired,
+    flawlessBonus: template.flawlessBonus,
+    earlyBonus: template.earlyBonus,
+    earlyDaysRemaining: template.earlyDaysRemaining,
     status: 'offered',
   };
 }
@@ -103,7 +118,13 @@ export function settleActiveContract(world: WorldState, outcome: 'completed' | '
     order.status = 'completed';
     if (contract) contract.status = 'completed';
 
-    const payout = order.completionPay + order.grant;
+    const flawlessBonus = world.shippedHiddenDefects === 0 ? (order.flawlessBonus ?? 0) : 0;
+    const daysRemaining = order.dueDay - currentDay(world);
+    const earlyBonus = daysRemaining >= (order.earlyDaysRemaining ?? Number.POSITIVE_INFINITY)
+      ? (order.earlyBonus ?? 0)
+      : 0;
+    const bonus = flawlessBonus + earlyBonus;
+    const payout = order.completionPay + order.grant + bonus;
     world.funds += payout;
 
     if (world.shippedHiddenDefects > 0) {
@@ -116,7 +137,7 @@ export function settleActiveContract(world: WorldState, outcome: 'completed' | '
       adjustReputation(world, 4);
       addEconomyLog(
         world,
-        `Контракт «${order.title}» закрыт: +${order.completionPay} и грант +${order.grant}. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
+        `Контракт «${order.title}» закрыт: выплата +${order.completionPay}, грант +${order.grant}${bonus > 0 ? `, премия +${bonus}` : ''}. Репутация: ${Math.round(world.reputation)} (${reputationLabel(world.reputation)}).`,
       );
     }
   } else {
